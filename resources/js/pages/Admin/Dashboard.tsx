@@ -17,21 +17,12 @@ interface Order {
   status: string;
 }
 
-interface Transaction {
-  id: number;
-  user: User;
-  amount: number;
-  type: string;
-}
-
 interface AdminDashboardProps extends PageProps {
-  users: User[];
-  products: Product[];
-  orders: Order[];
-  transactions: Transaction[];
-  todayUsers: User[];
-  todayOrders: Order[];
-  todayTransactions: Transaction[];
+  usersCount: number;
+  productsCount: number;
+  ordersCount: number;
+  todayUsersCount: number;
+  todayOrdersCount: number;
   jaybartOrderPusherEnabled: boolean;
   codecraftOrderPusherEnabled: boolean;
 }
@@ -44,13 +35,11 @@ const StatCard = ({ title, value }: { title: string; value: number | string }) =
 );
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  users,
-  products,
-  orders,
-  transactions,
-  todayUsers,
-  todayOrders,
-  todayTransactions,
+  usersCount,
+  productsCount,
+  ordersCount,
+  todayUsersCount,
+  todayOrdersCount,
   jaybartOrderPusherEnabled,
   codecraftOrderPusherEnabled,
 }) => {
@@ -79,21 +68,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Summary Section */}
         <section>
           <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Overall Summary</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard title="Total Users" value={users.length} />
-            <StatCard title="Total Products" value={products.length} />
-            <StatCard title="Total Orders" value={orders.length} />
-            <StatCard title="Total Transactions" value={transactions.length} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <StatCard title="Total Users" value={usersCount} />
+            <StatCard title="Total Products" value={productsCount} />
+            <StatCard title="Total Orders" value={ordersCount} />
           </div>
         </section>
 
         {/* Today Section */}
         <section>
           <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-200 mb-4">Today's Statistics</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <StatCard title="New Users Today" value={todayUsers.length} />
-            <StatCard title="Orders Today" value={todayOrders.length} />
-            <StatCard title="Transactions Today" value={todayTransactions.length} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <StatCard title="New Users Today" value={todayUsersCount} />
+            <StatCard title="Orders Today" value={todayOrdersCount} />
           </div>
         </section>
 

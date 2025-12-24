@@ -123,7 +123,7 @@ export default function Cart() {
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-600 dark:text-gray-400">Data:</span>
                             <span className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-lg">
-                              {item.quantity}GB
+                              {item.quantity}
                             </span>
                           </div>
                           <div className="text-right">
@@ -143,7 +143,7 @@ export default function Cart() {
                           <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex items-center gap-1">
                               <Icon name="Database" className="w-4 h-4" />
-                              <span>{item.quantity}GB</span>
+                              <span>{item.quantity}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <Icon name="Wifi" className="w-4 h-4" />
@@ -164,7 +164,7 @@ export default function Cart() {
                           <div className="text-center">
                             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Data Size</div>
                             <div className="font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-lg">
-                              {item.quantity}GB
+                              {item.quantity}
                             </div>
                           </div>
                           

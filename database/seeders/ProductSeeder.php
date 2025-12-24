@@ -127,5 +127,42 @@ class ProductSeeder extends Seeder
             'expiry' => '30 days',
             'has_variants' => true
         ]);
+
+        // Elite Products
+        Product::create([
+            'name' => 'MTN Elite',
+            'description' => 'MTN elite mobile data packages',
+            'network' => 'MTN',
+            'product_type' => 'elite_product',
+            'expiry' => '30 days',
+            'has_variants' => true
+        ]);
+
+        Product::create([
+            'name' => 'Telecel Elite',
+            'description' => 'Telecel elite mobile data packages',
+            'network' => 'Telecel',
+            'product_type' => 'elite_product',
+            'expiry' => '30 days',
+            'has_variants' => true
+        ]);
+
+        Product::create([
+            'name' => 'Ishare Elite',
+            'description' => 'Ishare elite mobile data packages',
+            'network' => 'Ishare',
+            'product_type' => 'elite_product',
+            'expiry' => '30 days',
+            'has_variants' => true
+        ]);
+
+        Product::create([
+            'name' => 'Bigtime Elite',
+            'description' => 'Bigtime elite mobile data packages',
+            'network' => 'Bigtime',
+            'product_type' => 'elite_product',
+            'expiry' => '30 days',
+            'has_variants' => true
+        ]);
     }
 }

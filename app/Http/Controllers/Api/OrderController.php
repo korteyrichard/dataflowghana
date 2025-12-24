@@ -47,6 +47,10 @@ class OrderController extends Controller
             10 => 'TELECEL', // Dealer Telecel
             11 => 'ISHARE',  // Dealer Ishare
             12 => 'BIGTIME', // Dealer Bigtime
+            13 => 'MTN',     // Elite MTN
+            14 => 'TELECEL', // Elite Telecel
+            15 => 'ISHARE',  // Elite Ishare
+            16 => 'BIGTIME', // Elite Bigtime
         ];
         
         if (!isset($networkMap[$request->network_id])) {
@@ -56,7 +60,13 @@ class OrderController extends Controller
         $networkName = $networkMap[$request->network_id];
         
         // Determine product type based on network_id range
-        $productType = in_array($request->network_id, [5, 6, 7, 8]) ? 'agent_product' : 'dealer_product';
+        if (in_array($request->network_id, [5, 6, 7, 8])) {
+            $productType = 'agent_product';
+        } elseif (in_array($request->network_id, [13, 14, 15, 16])) {
+            $productType = 'elite_product';
+        } else {
+            $productType = 'dealer_product';
+        }
         
         $product = Product::where('network', $networkName)
             ->where('product_type', $productType)

@@ -16,7 +16,7 @@ interface Product {
   name: string;
   description?: string;
   network: string;
-  product_type: 'agent_product' | 'customer_product' | 'dealer_product';
+  product_type: 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product';
   expiry: string;
   has_variants: boolean;
   variants: ProductVariant[];
@@ -39,14 +39,22 @@ export default function AdminProducts({
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [variants, setVariants] = useState<Array<{price: string; quantity: string; status: string}>>([{price: '', quantity: '', status: 'IN STOCK'}]);
 
-  const { data, setData, post, put, delete: destroy, processing, errors, reset } = useForm({
+  const { data, setData, post, put, delete: destroy, processing, errors, reset } = useForm<{
+    name: string;
+    description: string;
+    expiry: string;
+    network: string;
+    product_type: 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product';
+    has_variants: boolean;
+    variants: Array<{price: number; quantity: string; status: string}>;
+  }>({
     name: '',
     description: '',
     expiry: '',
     network: '',
-    product_type: 'customer_product' as 'agent_product' | 'customer_product' | 'dealer_product',
+    product_type: 'customer_product',
     has_variants: false,
-    variants: [] as Array<{price: number; quantity: string; status: string}>,
+    variants: [],
   });
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,11 +221,13 @@ const submitEditProduct = (e: React.FormEvent) => {
                       <td className="px-2 sm:px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           product.product_type === 'agent_product' ? 'bg-purple-100 text-purple-800' : 
-                          product.product_type === 'dealer_product' ? 'bg-green-100 text-green-800' : 
+                          product.product_type === 'dealer_product' ? 'bg-green-100 text-green-800' :
+                          product.product_type === 'elite_product' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-blue-100 text-blue-800'
                         }`}>
                           {product.product_type === 'agent_product' ? 'Agent' : 
-                           product.product_type === 'dealer_product' ? 'Dealer' : 'Customer'}
+                           product.product_type === 'dealer_product' ? 'Dealer' :
+                           product.product_type === 'elite_product' ? 'Elite' : 'Customer'}
                         </span>
                       </td>
                       <td className="px-2 sm:px-6 py-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
@@ -405,12 +415,13 @@ const submitEditProduct = (e: React.FormEvent) => {
                 <select
                   id="product_type"
                   value={data.product_type}
-                  onChange={(e) => setData('product_type', e.target.value as 'agent_product' | 'customer_product' | 'dealer_product')}
+                  onChange={(e) => setData('product_type', e.target.value as 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product')}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 >
                   <option value="customer_product">Customer Product</option>
                   <option value="agent_product">Agent Product</option>
                   <option value="dealer_product">Dealer Product</option>
+                  <option value="elite_product">Elite Product</option>
                 </select>
                 {errors.product_type && <p className="text-red-500 text-xs mt-1">{errors.product_type}</p>}
               </div>
@@ -587,12 +598,13 @@ const submitEditProduct = (e: React.FormEvent) => {
                 <select
                   id="edit-product_type"
                   value={data.product_type}
-                  onChange={(e) => setData('product_type', e.target.value as 'agent_product' | 'customer_product' | 'dealer_product')}
+                  onChange={(e) => setData('product_type', e.target.value as 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product')}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 >
                   <option value="customer_product">Customer Product</option>
                   <option value="agent_product">Agent Product</option>
                   <option value="dealer_product">Dealer Product</option>
+                  <option value="elite_product">Elite Product</option>
                 </select>
                 {errors.product_type && <p className="text-red-500 text-xs mt-1">{errors.product_type}</p>}
               </div>

@@ -28,6 +28,8 @@ class CartController extends Controller
                 $productType = 'customer_product';
             } elseif ($user->role === 'agent') {
                 $productType = 'agent_product';
+            } elseif ($user->role === 'elite') {
+                $productType = 'elite_product';
             } elseif ($user->role === 'dealer' || $user->role === 'admin') {
                 $productType = 'dealer_product';
             } else {
@@ -182,6 +184,8 @@ class CartController extends Controller
                 $productType = 'customer_product';
             } elseif ($user->role === 'agent') {
                 $productType = 'agent_product';
+            } elseif ($user->role === 'elite') {
+                $productType = 'elite_product';
             } elseif ($user->role === 'dealer' || $user->role === 'admin') {
                 $productType = 'dealer_product';
             } else {

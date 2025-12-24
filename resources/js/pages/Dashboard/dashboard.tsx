@@ -22,7 +22,7 @@ interface Product {
   price: number;
   network: string;
   expiry: string;
-  product_type: 'customer_products' | 'agent_product' | 'dealer_product';
+  product_type: 'customer_product' | 'agent_product' | 'dealer_product' | 'elite_product';
 }
 
 interface CartItem {
@@ -61,16 +61,19 @@ export default function Dashboard({ auth }: DashboardProps) {
 
   // Filter products based on user role
   const filteredProducts = products?.filter(product => {
-    if (auth.user.role === 'customer') {
-      return product.product_type === 'customer_products';
-    } else if (auth.user.role === 'agent') {
-      return product.product_type === 'agent_product';
-    } else if (auth.user.role === 'dealer') {
-      return product.product_type === 'dealer_product';
-    } else if (auth.user.role === 'admin') {
-      return product.product_type === 'dealer_product';
+    switch (auth.user.role) {
+      case 'customer':
+        return product.product_type === 'customer_product';
+      case 'agent':
+        return product.product_type === 'agent_product';
+      case 'elite':
+        return product.product_type === 'elite_product';
+      case 'dealer':
+      case 'admin':
+        return product.product_type === 'dealer_product';
+      default:
+        return false;
     }
-    return false;
   }) || [];
 
 

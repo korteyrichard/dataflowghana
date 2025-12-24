@@ -43,7 +43,7 @@ export interface User {
     email: string;
     avatar?: string;
     phone: string | null;
-    role: 'customer' | 'agent' | 'admin';
+    role: 'customer' | 'agent' | 'admin' | 'elite';
     wallet_balance: number;
     email_verified_at: string | null;
     created_at: string;

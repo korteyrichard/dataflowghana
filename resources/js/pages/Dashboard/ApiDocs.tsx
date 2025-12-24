@@ -239,6 +239,13 @@ TELECEL: 6
 ISHARE: 7
 BIGTIME: 8`}
                                 </pre>
+                            ) : auth.user.role === 'elite' ? (
+                                <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto">
+{`MTN: 13
+TELECEL: 14
+ISHARE: 15
+BIGTIME: 16`}
+                                </pre>
                             ) : (
                                 <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto">
 {`MTN: 9

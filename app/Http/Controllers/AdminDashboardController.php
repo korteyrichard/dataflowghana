@@ -21,56 +21,20 @@ class AdminDashboardController extends Controller
      */
     public function index()
     {
-        $users = User::all();
-        $products = Product::with('variants')->get();
-        $orders = Order::with(['products' => function($query) {
-            $query->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id');
-        }])->select('*')->get();
-        
-        // Transform orders to include variant information
-        $orders = $orders->map(function($order) {
-            $order->products = $order->products->map(function($product) {
-                if ($product->pivot->product_variant_id) {
-                    $variant = \App\Models\ProductVariant::find($product->pivot->product_variant_id);
-                    if ($variant && isset($variant->variant_attributes['size'])) {
-                        $product->size = strtoupper($variant->variant_attributes['size']);
-                    }
-                }
-                return $product;
-            });
-            return $order;
-        });
-        $transactions = Transaction::all();
+        $usersCount = User::count();
+        $productsCount = Product::count();
+        $ordersCount = Order::count();
 
         $today = now()->today();
-        $todayUsers = User::whereDate('created_at', $today)->get();
-        $todayOrders = Order::with(['products' => function($query) {
-            $query->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id');
-        }])->whereDate('created_at', $today)->get();
-        
-        // Transform today's orders to include variant information
-        $todayOrders = $todayOrders->map(function($order) {
-            $order->products = $order->products->map(function($product) {
-                if ($product->pivot->product_variant_id) {
-                    $variant = \App\Models\ProductVariant::find($product->pivot->product_variant_id);
-                    if ($variant && isset($variant->variant_attributes['size'])) {
-                        $product->size = strtoupper($variant->variant_attributes['size']);
-                    }
-                }
-                return $product;
-            });
-            return $order;
-        });
-        $todayTransactions = Transaction::whereDate('created_at', $today)->get();
+        $todayUsersCount = User::whereDate('created_at', $today)->count();
+        $todayOrdersCount = Order::whereDate('created_at', $today)->count();
 
         return Inertia::render('Admin/Dashboard', [
-            'users' => $users,
-            'products' => $products,
-            'orders' => $orders,
-            'transactions' => $transactions,
-            'todayUsers' => $todayUsers,
-            'todayOrders' => $todayOrders,
-            'todayTransactions' => $todayTransactions,
+            'usersCount' => $usersCount,
+            'productsCount' => $productsCount,
+            'ordersCount' => $ordersCount,
+            'todayUsersCount' => $todayUsersCount,
+            'todayOrdersCount' => $todayOrdersCount,
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
         ]);
@@ -352,7 +316,7 @@ class AdminDashboardController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role' => 'required|string|in:customer,agent,admin,dealer',
+            'role' => 'required|string|in:customer,agent,admin,dealer,elite',
         ]);
 
         User::create([
@@ -371,7 +335,7 @@ class AdminDashboardController extends Controller
     public function updateUserRole(Request $request, User $user)
     {
         $request->validate([
-            'role' => 'required|string|in:customer,agent,admin,dealer',
+            'role' => 'required|string|in:customer,agent,admin,dealer,elite',
         ]);
 
         $user->update([
@@ -475,7 +439,7 @@ class AdminDashboardController extends Controller
                 'network' => 'required|in:MTN,Telecel,Ishare,Bigtime',
                 'description' => 'required|string|max:255',
                 'expiry' => 'required|in:non expiry,30 days,24 hours',
-                'product_type' => 'required|in:agent_product,customer_product,dealer_product',
+                'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
                 'variants' => 'required|array|min:1',
                 'variants.*.price' => 'required|numeric|min:0',
                 'variants.*.quantity' => 'required|string',
@@ -547,7 +511,7 @@ class AdminDashboardController extends Controller
             'network' => 'required|in:MTN,Telecel,Ishare,Bigtime',
             'description' => 'required|string|max:255',
             'expiry' => 'required|in:non expiry,30 days,24 hours',
-            'product_type' => 'required|in:agent_product,customer_product,dealer_product',
+            'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
             'variants' => 'required|array|min:1',
             'variants.*.price' => 'required|numeric|min:0',
             'variants.*.quantity' => 'required|string',
@@ -665,8 +629,14 @@ class AdminDashboardController extends Controller
                         }
                     }
                     
+                    // Format beneficiary number as text to preserve leading zeros
+                    $beneficiaryNumber = $product->pivot->beneficiary_number ?? 'N/A';
+                    if ($beneficiaryNumber !== 'N/A') {
+                        $beneficiaryNumber = "\t" . $beneficiaryNumber;
+                    }
+                    
                     fputcsv($file, [
-                        $product->pivot->beneficiary_number ?? 'N/A',
+                        $beneficiaryNumber,
                         $size
                     ]);
                 }
