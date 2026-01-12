@@ -37,6 +37,7 @@ class AdminDashboardController extends Controller
             'todayOrdersCount' => $todayOrdersCount,
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
+            'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
         ]);
     }
 
@@ -104,6 +105,7 @@ class AdminDashboardController extends Controller
                 'product_type' => $product->product_type,
                 'expiry' => $product->expiry,
                 'has_variants' => $product->has_variants,
+                'status' => $product->status,
                 'variants' => $product->variants,
                 'price_range' => $product->getPriceRange(),
             ];
@@ -440,6 +442,7 @@ class AdminDashboardController extends Controller
                 'description' => 'required|string|max:255',
                 'expiry' => 'required|in:non expiry,30 days,24 hours',
                 'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
+                'status' => 'required|in:IN STOCK,OUT OF STOCK',
                 'variants' => 'required|array|min:1',
                 'variants.*.price' => 'required|numeric|min:0',
                 'variants.*.quantity' => 'required|string',
@@ -467,6 +470,7 @@ class AdminDashboardController extends Controller
                 'description' => $request->description,
                 'expiry' => $request->expiry,
                 'product_type' => $request->product_type,
+                'status' => $request->status,
                 'has_variants' => count($request->variants) > 1,
             ]);
 
@@ -512,6 +516,7 @@ class AdminDashboardController extends Controller
             'description' => 'required|string|max:255',
             'expiry' => 'required|in:non expiry,30 days,24 hours',
             'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
+            'status' => 'required|in:IN STOCK,OUT OF STOCK',
             'variants' => 'required|array|min:1',
             'variants.*.price' => 'required|numeric|min:0',
             'variants.*.quantity' => 'required|string',
@@ -526,6 +531,7 @@ class AdminDashboardController extends Controller
                     'description' => $request->description,
                     'expiry' => $request->expiry,
                     'product_type' => $request->product_type,
+                    'status' => $request->status,
                     'has_variants' => count($request->variants) > 1,
                 ]);
 
@@ -695,5 +701,17 @@ class AdminDashboardController extends Controller
         
         $status = $enabled ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "CodeCraft order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle DataMaster order pusher functionality.
+     */
+    public function toggleDatamasterOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('datamaster_order_pusher_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "DataMaster order pusher {$status} successfully.");
     }
 }

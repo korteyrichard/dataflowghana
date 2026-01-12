@@ -46,6 +46,13 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
       bgColor: 'bg-gradient-to-br from-yellow-400 to-yellow-600'
     },
     { 
+      id: 'MTN EXPRESS', 
+      name: 'MTN Express', 
+      icon: '/mtnlogo.jpeg', 
+      color: 'text-orange-600',
+      bgColor: 'bg-gradient-to-br from-orange-400 to-orange-600'
+    },
+    { 
       id: 'TELECEL', 
       name: 'Telecel', 
       icon: '/telecellogo.png', 

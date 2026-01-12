@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
 use App\Services\OrderPusherService;
 use App\Services\CodeCraftOrderPusherService;
+use App\Services\MtnExpressOrderPusherService;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 
@@ -58,6 +59,11 @@ class OrderController extends Controller
         }
         
         $networkName = $networkMap[$request->network_id];
+        
+        // Handle MTN EXPRESS as a special case
+        if ($networkName === 'MTN' && $request->has('is_express') && $request->is_express) {
+            $networkName = 'MTN EXPRESS';
+        }
         
         // Determine product type based on network_id range
         if (in_array($request->network_id, [5, 6, 7, 8])) {
@@ -112,8 +118,18 @@ class OrderController extends Controller
         // Push order to external API based on network (if enabled)
         try {
             if (strtolower($order->network) === 'mtn' && Setting::get('jaybart_order_pusher_enabled', 1)) {
-                $mtnOrderPusher = new OrderPusherService();
-                $mtnOrderPusher->pushOrderToApi($order);
+                // Check if this is an MTN Express product
+                $isMtnExpress = $order->products->contains(function($product) {
+                    return stripos($product->name, 'mtn express') !== false;
+                });
+                
+                if ($isMtnExpress && Setting::get('datamaster_order_pusher_enabled', 1)) {
+                    $mtnExpressOrderPusher = new MtnExpressOrderPusherService();
+                    $mtnExpressOrderPusher->pushOrderToApi($order);
+                } else {
+                    $mtnOrderPusher = new OrderPusherService();
+                    $mtnOrderPusher->pushOrderToApi($order);
+                }
             } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && Setting::get('codecraft_order_pusher_enabled', 1)) {
                 $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                 $codeCraftOrderPusher->pushOrderToApi($order);

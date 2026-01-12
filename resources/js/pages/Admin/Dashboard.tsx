@@ -2,6 +2,7 @@ import React from 'react';
 import { Head, usePage, router } from '@inertiajs/react';
 import { AdminLayout } from '@/layouts/admin-layout';
 import { PageProps, User } from '@/types';
+import { route } from 'ziggy-js';
 
 interface Product {
   id: number;
@@ -25,6 +26,7 @@ interface AdminDashboardProps extends PageProps {
   todayOrdersCount: number;
   jaybartOrderPusherEnabled: boolean;
   codecraftOrderPusherEnabled: boolean;
+  datamasterOrderPusherEnabled: boolean;
 }
 
 const StatCard = ({ title, value }: { title: string; value: number | string }) => (
@@ -42,6 +44,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   todayOrdersCount,
   jaybartOrderPusherEnabled,
   codecraftOrderPusherEnabled,
+  datamasterOrderPusherEnabled,
 }) => {
   const { auth } = usePage<AdminDashboardProps>().props;
 
@@ -54,6 +57,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const toggleCodecraftOrderPusher = () => {
     router.post('/admin/toggle-codecraft-order-pusher', {
       enabled: !codecraftOrderPusherEnabled
+    });
+  };
+
+  const toggleDatamasterOrderPusher = () => {
+    router.post(route('admin.toggle.datamaster.order.pusher'), {
+      enabled: !datamasterOrderPusherEnabled
     });
   };
 
@@ -130,6 +139,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                       codecraftOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* DataMaster Order Pusher */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">DataMaster Order Pusher</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {datamasterOrderPusherEnabled ? 'MTN Express orders are being pushed to DataMaster API' : 'DataMaster order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleDatamasterOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    datamasterOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      datamasterOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>

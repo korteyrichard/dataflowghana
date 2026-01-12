@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Services\MoolreSmsService;
+use App\Services\DataMasterOrderStatusSyncService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -22,8 +23,21 @@ class OrderStatusSyncService
     {
         $processingOrders = Order::whereIn('status', ['pending', 'processing'])->get();
         
+        // Sync DataMaster orders first
+        $dataMasterSync = new DataMasterOrderStatusSyncService($this->smsService);
+        $dataMasterSync->syncOrderStatuses();
+        
         foreach ($processingOrders as $order) {
             try {
+                // Skip MTN Express orders as they're handled by DataMaster sync
+                $isMtnExpress = $order->products->contains(function($product) {
+                    return stripos($product->name, 'mtn express') !== false;
+                });
+                
+                if ($isMtnExpress) {
+                    continue;
+                }
+                
                 if (strtolower($order->network) === 'mtn') {
                     $this->syncMtnOrderStatus($order);
                 } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime'])) {

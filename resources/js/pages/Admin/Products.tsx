@@ -19,6 +19,7 @@ interface Product {
   product_type: 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product';
   expiry: string;
   has_variants: boolean;
+  status: 'IN STOCK' | 'OUT OF STOCK';
   variants: ProductVariant[];
   price_range?: string;
 }
@@ -46,6 +47,7 @@ export default function AdminProducts({
     network: string;
     product_type: 'agent_product' | 'customer_product' | 'dealer_product' | 'elite_product';
     has_variants: boolean;
+    status: 'IN STOCK' | 'OUT OF STOCK';
     variants: Array<{price: number; quantity: string; status: string}>;
   }>({
     name: '',
@@ -54,6 +56,7 @@ export default function AdminProducts({
     network: '',
     product_type: 'customer_product',
     has_variants: false,
+    status: 'IN STOCK',
     variants: [],
   });
 
@@ -106,6 +109,7 @@ const submitAddProduct = (e: React.FormEvent) => {
       network: product.network,
       product_type: product.product_type,
       has_variants: product.has_variants,
+      status: product.status,
       variants: [],
     });
     setVariants(product.variants.map(v => ({
@@ -426,6 +430,20 @@ const submitEditProduct = (e: React.FormEvent) => {
                 {errors.product_type && <p className="text-red-500 text-xs mt-1">{errors.product_type}</p>}
               </div>
 
+              <div className="mb-4">
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Product Status</label>
+                <select
+                  id="status"
+                  value={data.status}
+                  onChange={(e) => setData('status', e.target.value as 'IN STOCK' | 'OUT OF STOCK')}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="IN STOCK">IN STOCK</option>
+                  <option value="OUT OF STOCK">OUT OF STOCK</option>
+                </select>
+                {errors.status && <p className="text-red-500 text-xs mt-1">{errors.status}</p>}
+              </div>
+
               <div className="flex flex-col sm:flex-row justify-end gap-2">
                 <button
                   type="button"
@@ -607,6 +625,20 @@ const submitEditProduct = (e: React.FormEvent) => {
                   <option value="elite_product">Elite Product</option>
                 </select>
                 {errors.product_type && <p className="text-red-500 text-xs mt-1">{errors.product_type}</p>}
+              </div>
+
+              <div className="mb-4">
+                <label htmlFor="edit-status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Product Status</label>
+                <select
+                  id="edit-status"
+                  value={data.status}
+                  onChange={(e) => setData('status', e.target.value as 'IN STOCK' | 'OUT OF STOCK')}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                >
+                  <option value="IN STOCK">IN STOCK</option>
+                  <option value="OUT OF STOCK">OUT OF STOCK</option>
+                </select>
+                {errors.status && <p className="text-red-500 text-xs mt-1">{errors.status}</p>}
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2">

@@ -41,6 +41,14 @@ class CartController extends Controller
                 ->where('product_type', $productType)
                 ->first();
             
+            // If no product found and network is MTN EXPRESS, try MTN network with express in name
+            if (!$product && $request->network === 'MTN EXPRESS') {
+                $product = Product::where('network', 'MTN')
+                    ->where('name', 'like', '%mtn express%')
+                    ->where('product_type', $productType)
+                    ->first();
+            }
+            
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }
@@ -197,6 +205,14 @@ class CartController extends Controller
                 ->where('product_type', $productType)
                 ->first();
             
+            // If no product found and network is MTN EXPRESS, try MTN network with express in name
+            if (!$product && $request->network === 'MTN EXPRESS') {
+                $product = Product::where('network', 'MTN')
+                    ->where('name', 'like', '%MTN Express%')
+                    ->where('product_type', $productType)
+                    ->first();
+            }
+            
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }
@@ -326,6 +342,14 @@ class CartController extends Controller
             $product = Product::where('network', $request->network)
                 ->where('product_type', $productType)
                 ->first();
+            
+            // If no product found and network is MTN EXPRESS, try MTN network with express in name
+            if (!$product && $request->network === 'MTN EXPRESS') {
+                $product = Product::where('network', 'MTN')
+                    ->where('name', 'like', '%MTN Express%')
+                    ->where('product_type', $productType)
+                    ->first();
+            }
             
             Log::info('Product search result', ['product_found' => $product ? true : false, 'network' => $request->network, 'product_type' => $productType]);
             

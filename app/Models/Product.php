@@ -12,7 +12,8 @@ class Product extends Model
         'network', 
         'product_type',
         'expiry',
-        'has_variants'
+        'has_variants',
+        'status'
     ];
 
     protected $casts = [
@@ -63,7 +64,9 @@ class Product extends Model
     // Check if product is in stock
     public function isInStock()
     {
-        return $this->variants()->where('status', 'IN STOCK')->where('quantity', '>', 0)->exists();
+        // Product must be in stock AND have at least one variant in stock
+        return $this->status === 'IN STOCK' && 
+               $this->variants()->where('status', 'IN STOCK')->where('quantity', '>', 0)->exists();
     }
 }
 

@@ -20,8 +20,8 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
         
-        // Get products for displaying expiry information
-        $products = Product::all();
+        // Get products for displaying expiry information (only in-stock products)
+        $products = Product::where('status', 'IN STOCK')->get();
         
         $cartCount = 0;
         $cartItems = [];
@@ -254,7 +254,17 @@ class DashboardController extends Controller
         
         $product = Product::where('network', $network)
             ->where('product_type', $productType)
+            ->where('status', 'IN STOCK')
             ->first();
+        
+        // If no product found and network is MTN EXPRESS, try MTN network
+        if (!$product && $network === 'MTN EXPRESS') {
+            $product = Product::where('network', 'MTN')
+                ->where('name', 'like', '%mtn express%')
+                ->where('product_type', $productType)
+                ->where('status', 'IN STOCK')
+                ->first();
+        }
         
         if (!$product) {
             return response()->json(['success' => false, 'message' => 'Product not found']);
