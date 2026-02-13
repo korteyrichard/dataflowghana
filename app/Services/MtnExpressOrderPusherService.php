@@ -22,8 +22,8 @@ class MtnExpressOrderPusherService
         $items = $order->products()->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id')->get();
 
         foreach ($items as $item) {
-            // Only process MTN Express products
-            if (!$this->isMtnExpressProduct($item->name)) {
+            // Process all MTN products
+            if (!$this->isMtnProduct($item->name)) {
                 continue;
             }
             
@@ -63,15 +63,33 @@ class MtnExpressOrderPusherService
                             'reference_id' => $orderNumber,
                             'api_status' => 'success'
                         ]);
+                        
+                        Log::info('Order pushed to DataMaster successfully', [
+                            'order_id' => $order->id,
+                            'order_number' => $orderNumber
+                        ]);
                     } else {
                         $order->update(['api_status' => 'failed']);
+                        Log::warning('DataMaster API response missing order_number', [
+                            'order_id' => $order->id,
+                            'response' => $responseData
+                        ]);
                     }
                 } else {
                     $order->update(['api_status' => 'failed']);
+                    Log::error('DataMaster API call failed', [
+                        'order_id' => $order->id,
+                        'status' => $response->status(),
+                        'response' => $response->body()
+                    ]);
                 }
 
             } catch (\Exception $e) {
                 $order->update(['api_status' => 'failed']);
+                Log::error('DataMaster API exception', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage()
+                ]);
             }
         }
     }
@@ -91,10 +109,10 @@ class MtnExpressOrderPusherService
         return $phone;
     }
     
-    private function isMtnExpressProduct($productName)
+    private function isMtnProduct($productName)
     {
         $productName = strtolower($productName);
-        return stripos($productName, 'mtn express') !== false;
+        return stripos($productName, 'mtn') !== false;
     }
     
     private function getPackageIdFromVariant($variant)

@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
-use App\Services\OrderPusherService;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Models\Setting;
@@ -126,34 +125,22 @@ class OrdersController extends Controller
             Log::info('Database transaction committed.');
 
             // Push orders to external APIs based on network and individual service settings
-            $jaybartEnabled = (bool) Setting::get('jaybart_order_pusher_enabled', 1);
-            $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
+            $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             
             foreach ($createdOrders as $order) {
                 try {
-                    if (strtolower($order->network) === 'mtn' && $jaybartEnabled) {
-                        // Check if this is an MTN Express product
-                        $isMtnExpress = $order->products->contains(function($product) {
-                            return stripos($product->name, 'mtn express') !== false;
-                        });
-                        
-                        if ($isMtnExpress && $datamasterEnabled) {
-                            $mtnExpressOrderPusher = new MtnExpressOrderPusherService();
-                            $mtnExpressOrderPusher->pushOrderToApi($order);
-                            Log::info('Order pushed to DataMaster API', ['orderId' => $order->id, 'network' => $order->network]);
-                        } else {
-                            $mtnOrderPusher = new OrderPusherService();
-                            $mtnOrderPusher->pushOrderToApi($order);
-                            Log::info('Order pushed to Jaybart API', ['orderId' => $order->id, 'network' => $order->network]);
-                        }
+                    if (strtolower($order->network) === 'mtn' && $datamasterEnabled) {
+                        $mtnOrderPusher = new MtnExpressOrderPusherService();
+                        $mtnOrderPusher->pushOrderToApi($order);
+                        Log::info('Order pushed to DataMaster API', ['orderId' => $order->id, 'network' => $order->network]);
                     } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
                         $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                         $codeCraftOrderPusher->pushOrderToApi($order);
                         Log::info('Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);
                     } else {
-                        $service = strtolower($order->network) === 'mtn' ? 'Jaybart' : 'CodeCraft';
-                        $enabled = strtolower($order->network) === 'mtn' ? $jaybartEnabled : $codecraftEnabled;
+                        $service = strtolower($order->network) === 'mtn' ? 'DataMaster' : 'CodeCraft';
+                        $enabled = strtolower($order->network) === 'mtn' ? $datamasterEnabled : $codecraftEnabled;
                         Log::info('Order pusher disabled for service', ['orderId' => $order->id, 'network' => $order->network, 'service' => $service, 'enabled' => $enabled]);
                     }
                 } catch (\Exception $e) {

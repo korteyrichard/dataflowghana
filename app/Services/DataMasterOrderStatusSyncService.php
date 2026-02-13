@@ -29,14 +29,14 @@ class DataMasterOrderStatusSyncService
             })
             ->get();
         
+        echo "Found {$processingOrders->count()} MTN Express orders to sync\n";
+        
         foreach ($processingOrders as $order) {
             try {
+                echo "Syncing order {$order->id} with reference {$order->reference_id}\n";
                 $this->syncDataMasterOrderStatus($order);
             } catch (\Exception $e) {
-                Log::error('Failed to sync DataMaster order status', [
-                    'orderId' => $order->id, 
-                    'error' => $e->getMessage()
-                ]);
+                echo "Failed to sync order {$order->id}: {$e->getMessage()}\n";
             }
         }
     }

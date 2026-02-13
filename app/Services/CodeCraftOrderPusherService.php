@@ -11,7 +11,7 @@ use App\Services\MoolreSmsService;
 class CodeCraftOrderPusherService
 {
     private $apiKey = '';
-    private $clientEmail = '';
+    private $baseUrl = 'https://api.codecraftnetwork.com/api';
 
     public function pushOrderToApi(Order $order)
     {
@@ -19,6 +19,8 @@ class CodeCraftOrderPusherService
         
         $items = $order->products()->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id')->get();
         Log::info('Order has items', ['count' => $items->count()]);
+        
+        $processedItems = 0;
 
         foreach ($items as $item) {
             Log::info('Processing item', ['name' => $item->name]);
@@ -38,43 +40,35 @@ class CodeCraftOrderPusherService
                 ]);
                 continue;
             }
+            
+            $processedItems++;
 
-            $referenceId = $this->generateReferenceId();
             $endpoint = $this->getEndpoint($network);
             
             $payload = [
-                'agent_api' => $this->apiKey,
                 'recipient_number' => $this->formatPhone($beneficiaryPhone),
                 'gig' => (string)$gig,
-                'reference_id' => $referenceId,
-                'client_email' => $this->clientEmail
+                'network' => str_replace('_BIGTIME', '', $network)
             ];
-            
-            if (in_array($network, ['MTN_BIGTIME', 'AT_BIGTIME'])) {
-                $payload['network'] = str_replace('_BIGTIME', '', $network);
-            } else {
-                $payload['network'] = $network;
-                $payload['customer_name'] = $order->user->name ?? 'Customer';
-                $payload['customer_tel'] = $order->user->phone ?? $beneficiaryPhone;
-            }
             
             Log::info('Sending to CodeCraft API', ['endpoint' => $endpoint, 'payload' => $payload]);
 
             try {
-                $response = Http::timeout(30)->post($endpoint, $payload);
+                $response = Http::timeout(30)
+                    ->withHeaders(['x-api-key' => $this->apiKey])
+                    ->post($endpoint, $payload);
                 
                 $statusCode = $response->status();
                 $responseData = $response->json();
                 
                 Log::info('CodeCraft API Response', [
                     'status_code' => $statusCode,
-                    'response' => $responseData,
-                    'reference_id' => $referenceId
+                    'response' => $responseData
                 ]);
 
-                if ($statusCode == 200) {
+                if ($statusCode == 200 && isset($responseData['reference_id'])) {
                     $updateData = [
-                        'reference_id' => $referenceId,
+                        'reference_id' => $responseData['reference_id'],
                         'api_status' => 'success'
                     ];
                     
@@ -91,28 +85,27 @@ class CodeCraftOrderPusherService
                         $smsService->sendSms($order->user->phone, $message);
                     }
                     
-                    Log::info('Order sent successfully to CodeCraft', ['reference_id' => $referenceId]);
+                    Log::info('Order sent successfully to CodeCraft', ['reference_id' => $responseData['reference_id']]);
                 } else {
-                    // API call failed
                     $order->update(['api_status' => 'failed']);
-                    
                     $message = $responseData['message'] ?? 'Unknown error';
                     Log::error('CodeCraft API Error', [
                         'status_code' => $statusCode,
-                        'message' => $message,
-                        'reference_id' => $referenceId
+                        'message' => $message
                     ]);
                 }
 
             } catch (\Exception $e) {
-                // API call exception
                 $order->update(['api_status' => 'failed']);
-                
                 Log::error('CodeCraft API Exception', [
-                    'message' => $e->getMessage(),
-                    'reference_id' => $referenceId
+                    'message' => $e->getMessage()
                 ]);
             }
+        }
+        
+        // If no items were processed, keep the status as disabled
+        if ($processedItems === 0) {
+            Log::info('No items were processed for order, keeping status as disabled', ['order_id' => $order->id]);
         }
     }
     
@@ -135,9 +128,7 @@ class CodeCraftOrderPusherService
     {
         $productName = strtolower($productName);
         
-        if (stripos($productName, 'mtn') !== false) {
-            return stripos($productName, 'big') !== false ? 'MTN_BIGTIME' : 'MTN';
-        } elseif (stripos($productName, 'telecel') !== false) {
+        if (stripos($productName, 'telecel') !== false) {
             return 'TELECEL';
         } elseif (stripos($productName, 'ishare') !== false) {
             return 'AT';
@@ -145,20 +136,51 @@ class CodeCraftOrderPusherService
             return 'AT_BIGTIME';
         }
         
+        // MTN orders should not be processed by CodeCraft
+        if (stripos($productName, 'mtn') !== false) {
+            Log::info('MTN order detected, skipping CodeCraft processing', ['product_name' => $productName]);
+            return null;
+        }
+        
         return null;
     }
     
     private function getEndpoint($network)
     {
-        if (in_array($network, ['MTN_BIGTIME', 'AT_BIGTIME'])) {
-            return 'https://api.codecraftnetwork.com/api/special.php';
+        if (in_array($network, ['AT_BIGTIME'])) {
+            return $this->baseUrl . '/special.php';
         }
         
-        return 'https://api.codecraftnetwork.com/api/initiate.php';
+        return $this->baseUrl . '/initiate.php';
     }
     
-    private function generateReferenceId()
+    public function checkOrderStatus($referenceId, $isBigTime = false)
     {
-        return strtoupper(Str::random(5) . '-' . Str::random(5) . '-' . Str::random(6) . '-' . Str::random(5) . '-' . rand(10000, 99999));
+        $endpoint = $isBigTime 
+            ? $this->baseUrl . '/response_big_time.php'
+            : $this->baseUrl . '/response_regular.php';
+            
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['x-api-key' => $this->apiKey])
+                ->get($endpoint, ['reference_id' => $referenceId]);
+                
+            $responseData = $response->json();
+            
+            Log::info('Order status check response', [
+                'reference_id' => $referenceId,
+                'response' => $responseData
+            ]);
+            
+            return $responseData;
+            
+        } catch (\Exception $e) {
+            Log::error('Order status check failed', [
+                'reference_id' => $referenceId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return null;
+        }
     }
 }

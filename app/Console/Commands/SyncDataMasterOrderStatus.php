@@ -13,6 +13,8 @@ class SyncDataMasterOrderStatus extends Command
 
     public function handle()
     {
+        $this->info('Starting DataMaster order status sync...');
+        
         $smsService = new MoolreSmsService();
         $syncService = new DataMasterOrderStatusSyncService($smsService);
         $syncService->syncOrderStatuses();
