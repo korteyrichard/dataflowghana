@@ -25,11 +25,11 @@ class DataMasterOrderStatusSyncService
         $processingOrders = Order::whereIn('status', ['pending', 'processing'])
             ->whereNotNull('reference_id')
             ->whereHas('products', function($query) {
-                $query->where('name', 'like', '%mtn express%');
+                $query->where('name', 'like', '%mtn%');
             })
             ->get();
         
-        echo "Found {$processingOrders->count()} MTN Express orders to sync\n";
+        echo "Found {$processingOrders->count()} MTN orders to sync\n";
         
         foreach ($processingOrders as $order) {
             try {
