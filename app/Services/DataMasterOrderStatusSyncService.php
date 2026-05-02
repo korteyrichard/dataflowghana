@@ -64,8 +64,8 @@ class DataMasterOrderStatusSyncService
                 
                 if (isset($data['success']) && $data['success'] === true && isset($data['data'])) {
                     $orderData = $data['data'];
-                    $deliveryStatus = $orderData['delivery_status'] ?? '';
-                    $paymentStatus = $orderData['payment_status'] ?? '';
+                    $paymentStatus = $orderData['status']['payment'] ?? '';
+                    $deliveryStatus = $orderData['status']['delivery'] ?? '';
                     
                     $newStatus = $this->mapDataMasterStatus($deliveryStatus, $paymentStatus);
                     

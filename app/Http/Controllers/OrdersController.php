@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
+use App\Services\DataEasyOrderPusherService;
 use App\Models\Setting;
 
 class OrdersController extends Controller
@@ -127,10 +128,17 @@ class OrdersController extends Controller
             // Push orders to external APIs based on network and individual service settings
             $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
+            $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
             
             foreach ($createdOrders as $order) {
                 try {
-                    if (strtolower($order->network) === 'mtn' && $datamasterEnabled) {
+                    $isMtn = str_contains(strtolower($order->network), 'mtn');
+                    
+                    if ($isMtn && $dataeasyEnabled) {
+                        $dataEasyOrderPusher = new DataEasyOrderPusherService();
+                        $dataEasyOrderPusher->pushOrderToApi($order);
+                        Log::info('Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
+                    } elseif ($isMtn && $datamasterEnabled) {
                         $mtnOrderPusher = new MtnExpressOrderPusherService();
                         $mtnOrderPusher->pushOrderToApi($order);
                         Log::info('Order pushed to DataMaster API', ['orderId' => $order->id, 'network' => $order->network]);

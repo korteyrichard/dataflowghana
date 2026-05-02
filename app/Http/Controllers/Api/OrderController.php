@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use Illuminate\Support\Facades\DB;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
+use App\Services\DataEasyOrderPusherService;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 
@@ -116,7 +117,12 @@ class OrderController extends Controller
         
         // Push order to external API based on network (if enabled)
         try {
-            if (strtolower($order->network) === 'mtn' && Setting::get('datamaster_order_pusher_enabled', 1)) {
+            $isMtn = str_contains(strtolower($order->network), 'mtn');
+            
+            if ($isMtn && Setting::get('dataeasy_order_pusher_enabled', 0)) {
+                $dataEasyOrderPusher = new DataEasyOrderPusherService();
+                $dataEasyOrderPusher->pushOrderToApi($order);
+            } elseif ($isMtn && Setting::get('datamaster_order_pusher_enabled', 1)) {
                 $mtnOrderPusher = new MtnExpressOrderPusherService();
                 $mtnOrderPusher->pushOrderToApi($order);
             } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && Setting::get('codecraft_order_pusher_enabled', 1)) {

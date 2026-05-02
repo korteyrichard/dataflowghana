@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Order;
 use App\Services\MoolreSmsService;
 use App\Services\DataMasterOrderStatusSyncService;
+use App\Services\DataEasyStatusSyncService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -27,6 +28,10 @@ class OrderStatusSyncService
         $dataMasterSync = new DataMasterOrderStatusSyncService($this->smsService);
         $dataMasterSync->syncOrderStatuses();
         
+        // Sync DataEasy orders
+        $dataEasySync = new DataEasyStatusSyncService($this->smsService);
+        $dataEasySync->syncOrderStatuses();
+        
         foreach ($processingOrders as $order) {
             try {
                 // Skip MTN Express orders as they're handled by DataMaster sync
@@ -35,6 +40,12 @@ class OrderStatusSyncService
                 });
                 
                 if ($isMtnExpress) {
+                    continue;
+                }
+                
+                // Skip DataEasy orders as they're handled by DataEasy sync above
+                $isDataEasy = strlen($order->reference_id) > 20 && !is_numeric($order->reference_id);
+                if ($isDataEasy) {
                     continue;
                 }
                 

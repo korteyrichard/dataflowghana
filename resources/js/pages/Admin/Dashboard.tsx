@@ -27,6 +27,7 @@ interface AdminDashboardProps extends PageProps {
   jaybartOrderPusherEnabled: boolean;
   codecraftOrderPusherEnabled: boolean;
   datamasterOrderPusherEnabled: boolean;
+  dataeasyOrderPusherEnabled: boolean;
 }
 
 const StatCard = ({ title, value }: { title: string; value: number | string }) => (
@@ -45,6 +46,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   jaybartOrderPusherEnabled,
   codecraftOrderPusherEnabled,
   datamasterOrderPusherEnabled,
+  dataeasyOrderPusherEnabled,
 }) => {
   const { auth } = usePage<AdminDashboardProps>().props;
 
@@ -61,8 +63,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const toggleDatamasterOrderPusher = () => {
-    router.post(route('admin.toggle.datamaster.order.pusher'), {
+    router.post('/admin/toggle-datamaster-order-pusher', {
       enabled: !datamasterOrderPusherEnabled
+    });
+  };
+
+  const toggleDataeasyOrderPusher = () => {
+    router.post('/admin/toggle-dataeasy-order-pusher', {
+      enabled: !dataeasyOrderPusherEnabled
     });
   };
 
@@ -163,6 +171,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                       datamasterOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* DataEasy Order Pusher */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">DataEasy Order Pusher</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {dataeasyOrderPusherEnabled ? 'MTN orders are being pushed to DataEasy API' : 'DataEasy order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleDataeasyOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    dataeasyOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      dataeasyOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>

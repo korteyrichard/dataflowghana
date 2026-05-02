@@ -38,6 +38,7 @@ class AdminDashboardController extends Controller
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
             'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
+            'dataeasyOrderPusherEnabled' => (bool) Setting::get('dataeasy_order_pusher_enabled', 0),
         ]);
     }
 
@@ -713,5 +714,17 @@ class AdminDashboardController extends Controller
         
         $status = $enabled ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "DataMaster order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle DataEasy order pusher functionality.
+     */
+    public function toggleDataeasyOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('dataeasy_order_pusher_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "DataEasy order pusher {$status} successfully.");
     }
 }

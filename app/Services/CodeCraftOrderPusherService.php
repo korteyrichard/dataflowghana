@@ -69,7 +69,7 @@ class CodeCraftOrderPusherService
                 if ($statusCode == 200 && isset($responseData['reference_id'])) {
                     $updateData = [
                         'reference_id' => $responseData['reference_id'],
-                        'api_status' => 'success'
+                        'order_pusher_status' => 'success'
                     ];
                     
                     if ($network === 'AT') {
@@ -79,15 +79,23 @@ class CodeCraftOrderPusherService
                     $order->update($updateData);
                     
                     // Send SMS if Ishare order completed and user has phone
-                    if ($network === 'AT' && $order->user && $order->user->phone) {
-                        $smsService = new MoolreSmsService();
-                        $message = "Your order #{$order->id} for {$order->products->first()->name} to {$item->pivot->beneficiary_number} has been completed. Total: GHS " . number_format($order->total, 2);
-                        $smsService->sendSms($order->user->phone, $message);
+                    try {
+                        if ($network === 'AT' && $order->user && $order->user->phone) {
+                            $smsService = new MoolreSmsService();
+                            $productName = $item->name ?? 'Ishare Data';
+                            $message = "Your order #{$order->id} for {$productName} to {$item->pivot->beneficiary_number} has been completed. Total: GHS " . number_format($order->total, 2);
+                            $smsService->sendSms($order->user->phone, $message);
+                        }
+                    } catch (\Exception $smsException) {
+                        Log::warning('SMS sending failed but order was successful', [
+                            'order_id' => $order->id,
+                            'error' => $smsException->getMessage()
+                        ]);
                     }
                     
                     Log::info('Order sent successfully to CodeCraft', ['reference_id' => $responseData['reference_id']]);
                 } else {
-                    $order->update(['api_status' => 'failed']);
+                    $order->update(['order_pusher_status' => 'failed']);
                     $message = $responseData['message'] ?? 'Unknown error';
                     Log::error('CodeCraft API Error', [
                         'status_code' => $statusCode,
@@ -96,7 +104,7 @@ class CodeCraftOrderPusherService
                 }
 
             } catch (\Exception $e) {
-                $order->update(['api_status' => 'failed']);
+                $order->update(['order_pusher_status' => 'failed']);
                 Log::error('CodeCraft API Exception', [
                     'message' => $e->getMessage()
                 ]);

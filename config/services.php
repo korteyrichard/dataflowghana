@@ -45,9 +45,14 @@ return [
     ],
 
     'datamaster' => [
-        'base_url' => env('DATAMASTER_BASE_URL', 'https://user.datamastagh.shop/developer/api/v1'),
+        'base_url' => env('DATAMASTER_BASE_URL', 'https://user.datamastagh.shop/developer/api/v2'),
         'secret_key' => env('DATAMASTER_SECRET_KEY'),
         'public_key' => env('DATAMASTER_PUBLIC_KEY'),
+    ],
+
+    'dataeasy' => [
+        'base_url' => env('DATAEASY_BASE_URL', 'https://dataeasy.onrender.com/api/v1'),
+        'api_key' => env('DATAEASY_API_KEY'),
     ],
 
 ];

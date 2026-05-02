@@ -99,6 +99,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])->name('admin.')->group(fun
     Route::post('admin/toggle-jaybart-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleJaybartOrderPusher'])->name('toggle.jaybart.order.pusher');
     Route::post('admin/toggle-codecraft-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftOrderPusher'])->name('toggle.codecraft.order.pusher');
     Route::post('admin/toggle-datamaster-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDatamasterOrderPusher'])->name('toggle.datamaster.order.pusher');
+    Route::post('admin/toggle-dataeasy-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataeasyOrderPusher'])->name('toggle.dataeasy.order.pusher');
 });
 
 // Paystack payment routes

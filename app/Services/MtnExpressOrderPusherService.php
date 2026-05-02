@@ -13,7 +13,7 @@ class MtnExpressOrderPusherService
 
     public function __construct()
     {
-        $this->baseUrl = config('services.datamaster.base_url', 'https://user.datamastagh.shop/developer/api/v1');
+        $this->baseUrl = config('services.datamaster.base_url', 'https://user.datamastagh.shop/developer/api/v2');
         $this->secretKey = config('services.datamaster.secret_key');
     }
 
@@ -34,16 +34,16 @@ class MtnExpressOrderPusherService
                 continue;
             }
 
-            $packageId = $this->getPackageIdFromVariant($variant);
+            $dataSize = $this->getDataSizeFromVariant($variant);
             
-            if (!$packageId) {
+            if (!$dataSize) {
                 continue;
             }
 
             $endpoint = $this->baseUrl . '/orders/place';
             $payload = [
-                'package_id' => $packageId,
-                'customer_phone' => $this->formatPhone($beneficiaryPhone)
+                'beneficiary_number' => $this->formatPhone($beneficiaryPhone),
+                'data_size' => $dataSize
             ];
 
             try {
@@ -115,34 +115,12 @@ class MtnExpressOrderPusherService
         return stripos($productName, 'mtn') !== false;
     }
     
-    private function getPackageIdFromVariant($variant)
+    private function getDataSizeFromVariant($variant)
     {
-        // Check if package_id is stored in variant attributes
-        if (isset($variant->variant_attributes['package_id'])) {
-            return (int)$variant->variant_attributes['package_id'];
-        }
-        
-        // Map size to DataMaster package IDs
-        $sizeToPackageMap = [
-            '1GB' => 74,
-            '2GB' => 75,
-            '3GB' => 76,
-            '4GB' => 77,
-            '5GB' => 78,
-            '6GB' => 79,
-            '8GB' => 80,
-            '10GB' => 81,
-            '15GB' => 82,
-            '20GB' => 83,
-            '25GB' => 84,
-            '30GB' => 85,
-            '40GB' => 86,
-            '50GB' => 87,
-        ];
-        
         if (isset($variant->variant_attributes['size'])) {
             $size = $variant->variant_attributes['size'];
-            return $sizeToPackageMap[$size] ?? null;
+            // Extract numeric value from size string (e.g., "1GB" -> 1, "1.5GB" -> 1.5)
+            return (float)filter_var($size, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         }
         
         return null;
