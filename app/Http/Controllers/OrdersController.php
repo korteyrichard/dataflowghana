@@ -12,6 +12,7 @@ use Inertia\Inertia;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
+use App\Services\DataSourceOrderPusherService;
 use App\Models\Setting;
 
 class OrdersController extends Controller
@@ -73,12 +74,18 @@ class OrdersController extends Controller
         DB::beginTransaction();
         Log::info('Database transaction started.');
         try {
+            // Store balance before deduction
+            $balanceBefore = $user->wallet_balance;
+            
             // Deduct wallet balance (use bcsub for decimal math and cast to float for decimal:2)
             $user->wallet_balance = (float) bcsub((string) $user->wallet_balance, (string) $total, 2);
             $user->save();
+            
+            $balanceAfter = $user->wallet_balance;
             Log::info('Wallet balance deducted.', ['userId' => $user->id, 'newWalletBalance' => $user->wallet_balance]);
 
             $createdOrders = [];
+            $itemsProcessed = 0;
 
             // Create separate order for each cart item
             foreach ($cartItems as $item) {
@@ -105,10 +112,16 @@ class OrdersController extends Controller
                 Log::info('Product attached to order.', ['orderId' => $order->id, 'productId' => $item->product_id, 'beneficiaryNumber' => $item->beneficiary_number]);
 
                 // Create a transaction record for this order
+                $balanceBeforeItem = (float) bcsub((string) $balanceBefore, (string) $itemsProcessed, 2);
+                $balanceAfterItem = $balanceBeforeItem - $itemTotal;
+                $itemsProcessed = (float) bcadd((string) $itemsProcessed, (string) $itemTotal, 2);
+                
                 \App\Models\Transaction::create([
                     'user_id' => $user->id,
                     'order_id' => $order->id,
                     'amount' => $itemTotal,
+                    'balance_before' => $balanceBeforeItem,
+                    'balance_after' => $balanceAfterItem,
                     'status' => 'completed',
                     'type' => 'order',
                     'description' => 'Order placed for ' . $network . ' data/airtime.',
@@ -129,27 +142,41 @@ class OrdersController extends Controller
             $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
+            $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
             
             foreach ($createdOrders as $order) {
                 try {
-                    $isMtn = str_contains(strtolower($order->network), 'mtn');
+                    $isMtn = stripos($order->network, 'mtn') !== false;
+                    $isMtnExpress = stripos($order->network, 'mtn express') !== false;
                     
-                    if ($isMtn && $dataeasyEnabled) {
+                    if ($isMtnExpress && $datamasterEnabled) {
+                        // MTN Express goes to DataMaster
+                        $mtnOrderPusher = new MtnExpressOrderPusherService();
+                        $mtnOrderPusher->pushOrderToApi($order);
+                        Log::info('Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
+                    } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
+                        // Regular MTN goes to DataSource Order Pusher
+                        $dataSourceOrderPusher = new DataSourceOrderPusherService();
+                        $dataSourceOrderPusher->pushOrderToApi($order);
+                        Log::info('Order pushed to DataSource Order Pusher API', ['orderId' => $order->id, 'network' => $order->network]);
+                    } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
+                        // MTN can also go to DataEasy if DataSource Pusher disabled
                         $dataEasyOrderPusher = new DataEasyOrderPusherService();
                         $dataEasyOrderPusher->pushOrderToApi($order);
                         Log::info('Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
-                    } elseif ($isMtn && $datamasterEnabled) {
-                        $mtnOrderPusher = new MtnExpressOrderPusherService();
-                        $mtnOrderPusher->pushOrderToApi($order);
-                        Log::info('Order pushed to DataMaster API', ['orderId' => $order->id, 'network' => $order->network]);
                     } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
+                        // Other networks go to CodeCraft
                         $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                         $codeCraftOrderPusher->pushOrderToApi($order);
                         Log::info('Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);
                     } else {
-                        $service = strtolower($order->network) === 'mtn' ? 'DataMaster' : 'CodeCraft';
-                        $enabled = strtolower($order->network) === 'mtn' ? $datamasterEnabled : $codecraftEnabled;
-                        Log::info('Order pusher disabled for service', ['orderId' => $order->id, 'network' => $order->network, 'service' => $service, 'enabled' => $enabled]);
+                        if ($isMtnExpress) {
+                            Log::info('Order pusher disabled for MTN Express', ['orderId' => $order->id, 'datamasterEnabled' => $datamasterEnabled]);
+                        } elseif ($isMtn) {
+                            Log::info('Order pusher disabled for DataSource', ['orderId' => $order->id, 'dataSourceEnabled' => $dataSourceEnabled, 'dataeasyEnabled' => $dataeasyEnabled]);
+                        } else {
+                            Log::info('Order pusher disabled for network', ['orderId' => $order->id, 'network' => $order->network, 'codecraftEnabled' => $codecraftEnabled]);
+                        }
                     }
                 } catch (\Exception $e) {
                     Log::error('Failed to push order to external API', ['orderId' => $order->id, 'network' => $order->network, 'error' => $e->getMessage()]);

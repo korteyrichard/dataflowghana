@@ -69,7 +69,7 @@ class CodeCraftOrderPusherService
                 if ($statusCode == 200 && isset($responseData['reference_id'])) {
                     $updateData = [
                         'reference_id' => $responseData['reference_id'],
-                        'order_pusher_status' => 'success'
+                        'api_status' => 'success'
                     ];
                     
                     if ($network === 'AT') {
@@ -95,7 +95,7 @@ class CodeCraftOrderPusherService
                     
                     Log::info('Order sent successfully to CodeCraft', ['reference_id' => $responseData['reference_id']]);
                 } else {
-                    $order->update(['order_pusher_status' => 'failed']);
+                    $order->update(['api_status' => 'failed']);
                     $message = $responseData['message'] ?? 'Unknown error';
                     Log::error('CodeCraft API Error', [
                         'status_code' => $statusCode,
@@ -104,7 +104,7 @@ class CodeCraftOrderPusherService
                 }
 
             } catch (\Exception $e) {
-                $order->update(['order_pusher_status' => 'failed']);
+                $order->update(['api_status' => 'failed']);
                 Log::error('CodeCraft API Exception', [
                     'message' => $e->getMessage()
                 ]);

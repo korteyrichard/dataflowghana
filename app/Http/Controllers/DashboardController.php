@@ -10,8 +10,9 @@ use App\Models\Cart;
 use App\Models\Transaction;
 use App\Models\Order;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Schema;
+use App\Models\User;
 use App\Services\MoolreSmsService;
 
 class DashboardController extends Controller
@@ -138,39 +139,41 @@ class DashboardController extends Controller
     public function addToWallet(Request $request)
     {
         $request->validate([
-            'amount' => 'required|numeric|min:1',
+            'amount' => 'required|numeric|min:1|max:50000',
         ]);
 
         $user = auth()->user();
         $reference = 'wallet_' . Str::random(16);
         
-        // Store pending transaction
         $transaction = Transaction::create([
             'user_id' => $user->id,
             'order_id' => null,
             'amount' => $request->amount,
+            'balance_before' => $user->wallet_balance,
+            'balance_after' => $user->wallet_balance,
             'status' => 'pending',
             'type' => 'topup',
             'description' => 'Wallet top-up of GHS ' . number_format($request->amount, 2),
             'reference' => $reference,
         ]);
         
-        // Initialize Paystack payment
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . config('paystack.secret_key'),
-            'Content-Type' => 'application/json',
-        ])->post('https://api.paystack.co/transaction/initialize', [
-            'email' => $user->email,
-            'amount' => $request->amount * 100, // Convert to kobo
-            'callback_url' => route('wallet.callback'),
-            'reference' => $reference,
-            'metadata' => [
-                'user_id' => $user->id,
-                'transaction_id' => $transaction->id,
-                'type' => 'wallet_topup',
-                'actual_amount' => $request->amount
-            ]
-        ]);
+        $response = Http::timeout(15)
+            ->retry(2, 100)
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . config('paystack.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->post('https://api.paystack.co/transaction/initialize', [
+                'email' => $user->email,
+                'amount' => $request->amount * 100,
+                'callback_url' => route('wallet.callback'),
+                'reference' => $reference,
+                'metadata' => [
+                    'user_id' => $user->id,
+                    'transaction_id' => $transaction->id,
+                    'type' => 'wallet_topup',
+                    'actual_amount' => $request->amount
+                ]
+            ]);
 
         if ($response->successful()) {
             return response()->json([
@@ -179,16 +182,8 @@ class DashboardController extends Controller
             ]);
         }
 
-        // Capture Paystack reference even on failure for tracking purposes
-        $responseData = $response->json();
-        $paystackReference = $responseData['data']['reference'] ?? null;
-        
-        $transaction->update([
-            'status' => 'failed',
-            'reference' => $paystackReference ?: $reference // Use Paystack reference if available, otherwise keep original
-        ]);
-        
-        return response()->json(['success' => false, 'message' => 'Payment initialization failed']);
+        $transaction->update(['status' => 'failed']);
+        return response()->json(['success' => false, 'message' => 'Payment initialization failed'], 400);
     }
 
     public function handleWalletCallback(Request $request)
@@ -203,27 +198,33 @@ class DashboardController extends Controller
             $paymentData = $response->json('data');
             $metadata = $paymentData['metadata'];
             
-            $transaction = Transaction::find($metadata['transaction_id']);
-            $user = auth()->user();
-            
-            if ($transaction && $transaction->status === 'pending') {
-                // Get the amount from metadata or transaction record
+            // Use database transaction with locking
+            DB::transaction(function () use ($metadata) {
+                $transaction = Transaction::lockForUpdate()->find($metadata['transaction_id']);
+                
+                if (!$transaction || $transaction->status === 'completed') {
+                    return;
+                }
+                
+                $user = User::lockForUpdate()->find($metadata['user_id']);
                 $amount = isset($metadata['actual_amount']) ? $metadata['actual_amount'] : $transaction->amount;
+                $balanceBefore = $user->wallet_balance;
                 
-                // Update wallet balance with the full amount
-                $user->wallet_balance += $amount;
-                $user->save();
+                $user->increment('wallet_balance', $amount);
+                $balanceAfter = $balanceBefore + $amount;
                 
-                // Update transaction status
-                $transaction->update(['status' => 'completed']);
+                $transaction->update([
+                    'status' => 'completed',
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter
+                ]);
                 
-                // Send SMS notification
                 if ($user->phone) {
                     $smsService = new MoolreSmsService();
-                    $message = "Your wallet has been topped up with GHS " . number_format($amount, 2) . ". New balance: GHS " . number_format($user->wallet_balance, 2);
+                    $message = "Your wallet has been topped up with GHS " . number_format($amount, 2) . ". New balance: GHS " . number_format($balanceAfter, 2);
                     $smsService->sendSms($user->phone, $message);
                 }
-            }
+            });
         }
 
         return redirect()->route('dashboard')->with('success', 'Wallet topped up successfully!');
@@ -235,6 +236,11 @@ class DashboardController extends Controller
         
         if (!$network) {
             return response()->json(['success' => false, 'message' => 'Network is required']);
+        }
+        
+        $allowedNetworks = ['MTN', 'MTN EXPRESS', 'TELECEL', 'ISHARE', 'BIGTIME'];
+        if (!in_array($network, $allowedNetworks, true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid network']);
         }
         
         $user = auth()->user();
@@ -260,7 +266,7 @@ class DashboardController extends Controller
         // If no product found and network is MTN EXPRESS, try MTN network
         if (!$product && $network === 'MTN EXPRESS') {
             $product = Product::where('network', 'MTN')
-                ->where('name', 'like', '%mtn express%')
+                ->whereRaw("LOWER(name) LIKE ?", ['%mtn express%'])
                 ->where('product_type', $productType)
                 ->where('status', 'IN STOCK')
                 ->first();

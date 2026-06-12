@@ -9,12 +9,20 @@ use Inertia\Inertia;
 
 class AFAProductController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('role:admin');
+    }
+
     public function index(Request $request)
     {
         $afaProducts = AFAProduct::query();
 
         if ($request->has('status') && $request->input('status') !== '') {
-            $afaProducts->where('status', $request->input('status'));
+            $allowedStatuses = ['IN_STOCK', 'OUT_OF_STOCK'];
+            if (in_array($request->input('status'), $allowedStatuses, true)) {
+                $afaProducts->where('status', $request->input('status'));
+            }
         }
 
         return Inertia::render('Admin/AFAProducts', [
@@ -27,7 +35,7 @@ class AFAProductController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:100000',
             'status' => 'required|in:IN_STOCK,OUT_OF_STOCK',
         ]);
 
@@ -44,7 +52,7 @@ class AFAProductController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:100000',
             'status' => 'required|in:IN_STOCK,OUT_OF_STOCK',
         ]);
 

@@ -16,6 +16,14 @@ interface UserTransactionsPageProps extends PageProps {
   };
 }
 
+const formatBalance = (balance: number | null | undefined): string => {
+  if (balance === null || balance === undefined) {
+    return '-';
+  }
+  const num = typeof balance === 'string' ? parseFloat(balance) : balance;
+  return isNaN(num) ? '-' : `₵${num.toFixed(2)}`;
+};
+
 const UserTransactionsPage = ({ auth, user, transactions }: UserTransactionsPageProps) => {
   const transactionData = transactions.data || [];
   const getStatusBadge = (status: string) => {
@@ -148,13 +156,14 @@ const UserTransactionsPage = ({ auth, user, transactions }: UserTransactionsPage
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Before</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance After</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {transactionData.map((transaction) => (
+                  {transactionData.map((transaction: any) => (
                     <tr key={transaction.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(transaction.created_at).toLocaleDateString()}
@@ -165,11 +174,14 @@ const UserTransactionsPage = ({ auth, user, transactions }: UserTransactionsPage
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getTypeBadge(transaction.type)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                        {transaction.description}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         ₵{parseFloat(transaction.amount).toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatBalance(transaction.balance_before)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatBalance(transaction.balance_after)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(transaction.status)}
@@ -182,7 +194,7 @@ const UserTransactionsPage = ({ auth, user, transactions }: UserTransactionsPage
 
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-200">
-              {transactionData.map((transaction) => (
+              {transactionData.map((transaction: any) => (
                 <div key={transaction.id} className="p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col">
@@ -198,7 +210,10 @@ const UserTransactionsPage = ({ auth, user, transactions }: UserTransactionsPage
                       ₵{parseFloat(transaction.amount).toFixed(2)}
                     </p>
                   </div>
-                  <p className="text-sm text-gray-900">{transaction.description}</p>
+                  <div className="text-xs text-gray-600 space-y-1">
+                    <div>Before: {formatBalance(transaction.balance_before)}</div>
+                    <div>After: {formatBalance(transaction.balance_after)}</div>
+                  </div>
                 </div>
               ))}
             </div>

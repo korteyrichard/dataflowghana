@@ -7,10 +7,12 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
+use App\Services\DataSourceOrderPusherService;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 
@@ -83,7 +85,7 @@ class OrderController extends Controller
         }
 
         $variant = ProductVariant::where('product_id', $product->id)
-            ->whereJsonContains('variant_attributes->size', $request->size)
+            ->where('variant_attributes->size', '=', $request->size)
             ->first();
             
         if (!$variant) {
@@ -95,14 +97,24 @@ class OrderController extends Controller
         }
 
         $order = DB::transaction(function() use ($request, $product, $variant) {
-            auth()->user()->decrement('wallet_balance', $variant->price);
+            $user = auth()->user();
+            // Lock the user row to prevent race conditions
+            $user = User::lockForUpdate()->find(auth()->id());
+            
+            $balanceBefore = $user->wallet_balance;
+            if ($balanceBefore < $variant->price) {
+                throw new \Exception('Insufficient wallet balance');
+            }
+            $user->decrement('wallet_balance', $variant->price);
+            $balanceAfter = $user->fresh()->wallet_balance;
             
             $order = Order::create([
                 'user_id' => auth()->id(),
                 'total' => $variant->price,
                 'beneficiary_number' => $request->beneficiary_number,
                 'network' => $product->network,
-                'status' => 'pending'
+                'status' => 'pending',
+                'is_api_order' => true
             ]);
 
             $order->products()->attach($product->id, [
@@ -111,23 +123,46 @@ class OrderController extends Controller
                 'beneficiary_number' => $request->beneficiary_number,
                 'product_variant_id' => $variant->id
             ]);
+            
+            Log::info('Order processed successfully', [
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'amount' => $variant->price,
+                'network' => $order->network
+            ]);
 
             return $order;
         });
         
         // Push order to external API based on network (if enabled)
         try {
-            $isMtn = str_contains(strtolower($order->network), 'mtn');
+            $isMtn = stripos($order->network, 'mtn') !== false;
+            $isMtnExpress = stripos($order->network, 'mtn express') !== false;
+            $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
+            $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
+            $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
+            $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
             
-            if ($isMtn && Setting::get('dataeasy_order_pusher_enabled', 0)) {
-                $dataEasyOrderPusher = new DataEasyOrderPusherService();
-                $dataEasyOrderPusher->pushOrderToApi($order);
-            } elseif ($isMtn && Setting::get('datamaster_order_pusher_enabled', 1)) {
+            if ($isMtnExpress && $datamasterEnabled) {
+                // MTN Express goes to DataMaster
                 $mtnOrderPusher = new MtnExpressOrderPusherService();
                 $mtnOrderPusher->pushOrderToApi($order);
-            } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && Setting::get('codecraft_order_pusher_enabled', 1)) {
+                Log::info('API Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
+                // Regular MTN goes to DataSource Order Pusher
+                $dataSourceOrderPusher = new DataSourceOrderPusherService();
+                $dataSourceOrderPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to DataSource Order Pusher API', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
+                // MTN can also go to DataEasy if DataSource Pusher disabled
+                $dataEasyOrderPusher = new DataEasyOrderPusherService();
+                $dataEasyOrderPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
+                // Other networks go to CodeCraft
                 $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                 $codeCraftOrderPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);
             } else {
                 // Order pusher is disabled for this network
                 $order->update(['api_status' => 'disabled']);

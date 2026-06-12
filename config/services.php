@@ -55,4 +55,10 @@ return [
         'api_key' => env('DATAEASY_API_KEY'),
     ],
 
+    'datasource' => [
+        'base_url' => env('DATASOURCE_BASE_URL', 'https://datasourcegh.com'),
+        'api_key' => env('DATASOURCE_API_KEY'),
+        'secret_key' => env('DATASOURCE_SECRET_KEY'),
+    ],
+
 ];

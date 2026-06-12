@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class AFAOrders extends Model
 {
     protected $table = 'afa_orders';
-    protected $fillable = ['user_id','Afa_product_id', 'status', 'full_name', 'email', 'phone','dob','occupation','region'];
+    protected $fillable = ['user_id','afa_product_id', 'status', 'full_name', 'ghana_card_number', 'phone','dob','occupation','region'];
 
     public function user()
     {
@@ -19,7 +19,7 @@ class AFAOrders extends Model
         return $this->hasMany(Transaction::class);
     }
     public function afaproduct(){
-        return $this->belongsTo(AFAProduct::class, 'Afa_product_id');
+        return $this->belongsTo(AFAProduct::class, 'afa_product_id');
     }
 };
 

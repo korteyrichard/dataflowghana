@@ -24,9 +24,15 @@ class User extends Authenticatable
         'phone',
         'business_name',
         'password',
-        'wallet_balance', // added wallet_balance to fillable
-        'role', // added role to fillable
     ];
+    
+    /**
+     * Attributes that should never be mass assigned.
+     * wallet_balance and role can only be updated through explicit methods.
+     *
+     * @var list<string>
+     */
+    protected $guarded = ['wallet_balance', 'role'];
 
     /**
      * The attributes that should be hidden for serialization.

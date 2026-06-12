@@ -10,6 +10,7 @@ interface User {
 
 interface Order {
   user: User;
+  is_api_order: boolean;
 }
 
 interface Transaction {
@@ -19,6 +20,8 @@ interface Transaction {
   description: string;
   created_at: string;
   type: string;
+  balance_before?: number | null;
+  balance_after?: number | null;
   user?: User; // Direct user relationship for topups
   order?: Order; // Order relationship for order transactions
 }
@@ -63,6 +66,14 @@ const typeColors: Record<string, string> = {
   admin_debit: 'bg-red-100 text-red-800',
 };
 
+const formatBalance = (balance: number | null | undefined): string => {
+  if (balance === null || balance === undefined) {
+    return '-';
+  }
+  const num = typeof balance === 'string' ? parseFloat(balance) : balance;
+  return isNaN(num) ? '-' : `$${num.toFixed(2)}`;
+};
+
 export default function AdminTransactions() {
   const { transactions, auth, filterType: initialFilterType } = usePage<AdminTransactionsPageProps>().props;
   const [filterType, setFilterType] = useState(initialFilterType);
@@ -76,7 +87,7 @@ export default function AdminTransactions() {
   return (
     <AdminLayout user={auth?.user} header={<h2 className="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">Admin Transactions</h2>}>
       <Head title="Admin Transactions" />
-      <div className="py-8 max-w-4xl mx-auto">
+      <div className="py-8 max-w-6xl mx-auto">
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <label className="font-medium">Filter by Type:</label>
           <select
@@ -105,6 +116,8 @@ export default function AdminTransactions() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance Before</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance After</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 </tr>
               </thead>
@@ -115,7 +128,14 @@ export default function AdminTransactions() {
                     <td className="px-4 py-3 text-sm">{transaction.user?.name || transaction.order?.user?.name}</td>
                     <td className="px-4 py-3 text-sm">${transaction.amount}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold  ${typeColors[transaction.type]}`}>{typeLabels[transaction.type]}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${typeColors[transaction.type]}`}>
+                          {typeLabels[transaction.type]}
+                        </span>
+                        {transaction.order?.is_api_order && (
+                          <span className="px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">API</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -127,6 +147,8 @@ export default function AdminTransactions() {
                         {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-sm">{formatBalance(transaction.balance_before)}</td>
+                    <td className="px-4 py-3 text-sm">{formatBalance(transaction.balance_after)}</td>
                     <td className="px-4 py-3 text-xs">{new Date(transaction.created_at).toLocaleString()}</td>
                   </tr>
                 ))}

@@ -29,16 +29,31 @@ class AdminDashboardController extends Controller
         $todayUsersCount = User::whereDate('created_at', $today)->count();
         $todayOrdersCount = Order::whereDate('created_at', $today)->count();
 
+        // Get past 30 days sales data
+        $past30Days = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $sales = Order::whereDate('created_at', $date)
+                ->sum('total');
+            $past30Days[] = [
+                'date' => now()->subDays($i)->format('M d'),
+                'fullDate' => $date,
+                'sales' => (float) $sales,
+            ];
+        }
+
         return Inertia::render('Admin/Dashboard', [
             'usersCount' => $usersCount,
             'productsCount' => $productsCount,
             'ordersCount' => $ordersCount,
             'todayUsersCount' => $todayUsersCount,
             'todayOrdersCount' => $todayOrdersCount,
+            'past30DaysSales' => $past30Days,
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
             'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
             'dataeasyOrderPusherEnabled' => (bool) Setting::get('dataeasy_order_pusher_enabled', 0),
+            'dataSourceOrderPusherEnabled' => (bool) Setting::get('datasource_order_pusher_enabled', 1),
         ]);
     }
 
@@ -147,6 +162,13 @@ class AdminDashboardController extends Controller
             });
         }
 
+        // Search by username
+        if ($request->has('username') && $request->input('username') !== '') {
+            $orders->whereHas('user', function($userQuery) use ($request) {
+                $userQuery->where('name', $request->input('username'));
+            });
+        }
+
         $paginatedOrders = $orders->paginate(50);
         
         // Transform orders to include variant information
@@ -164,13 +186,18 @@ class AdminDashboardController extends Controller
         });
 
         $dailyTotalSales = Order::whereDate('created_at', today())->sum('total');
+        
+        // Get all unique networks from all orders
+        $allNetworks = Order::distinct()->pluck('network')->filter()->sort()->values();
 
         return Inertia::render('Admin/Orders', [
             'orders' => $paginatedOrders,
+            'allNetworks' => $allNetworks,
             'filterNetwork' => $request->input('network', ''),
             'filterStatus' => $request->input('status', ''),
             'searchOrderId' => $request->input('order_id', ''),
             'searchBeneficiaryNumber' => $request->input('beneficiary_number', ''),
+            'searchUsername' => $request->input('username', ''),
             'dailyTotalSales' => $dailyTotalSales,
         ]);
     }
@@ -200,15 +227,19 @@ class AdminDashboardController extends Controller
         if ($request->status === 'cancelled' && $oldStatus !== 'cancelled') {
             $user = $order->user;
             $refundAmount = $order->total;
+            $balanceBefore = $user->wallet_balance;
             
             // Add refund to user's wallet
             $user->increment('wallet_balance', $refundAmount);
+            $balanceAfter = $user->fresh()->wallet_balance;
             
             // Create refund transaction record
             Transaction::create([
                 'user_id' => $user->id,
                 'order_id' => $order->id,
                 'amount' => $refundAmount,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
                 'status' => 'completed',
                 'type' => 'refund',
                 'description' => "Refund for cancelled order #{$order->id}",
@@ -256,15 +287,19 @@ class AdminDashboardController extends Controller
                 if ($order->status !== 'cancelled') {
                     $user = $order->user;
                     $refundAmount = $order->total;
+                    $balanceBefore = $user->wallet_balance;
                     
                     // Add refund to user's wallet
                     $user->increment('wallet_balance', $refundAmount);
+                    $balanceAfter = $user->fresh()->wallet_balance;
                     
                     // Create refund transaction record
                     Transaction::create([
                         'user_id' => $user->id,
                         'order_id' => $order->id,
                         'amount' => $refundAmount,
+                        'balance_before' => $balanceBefore,
+                        'balance_after' => $balanceAfter,
                         'status' => 'completed',
                         'type' => 'refund',
                         'description' => "Refund for cancelled order #{$order->id}",
@@ -298,7 +333,10 @@ class AdminDashboardController extends Controller
      */
     public function transactions(Request $request)
     {
-        $transactions = Transaction::with('user', 'admin', 'order.user')->latest();
+        $transactions = Transaction::with('user', 'admin', 'order.user')
+            ->where('status', 'completed')
+            ->select('id', 'user_id', 'admin_id', 'order_id', 'amount', 'balance_before', 'balance_after', 'status', 'type', 'description', 'created_at')
+            ->latest();
 
         if ($request->has('type') && $request->input('type') !== '') {
             $transactions->where('type', $request->input('type'));
@@ -368,13 +406,17 @@ class AdminDashboardController extends Controller
         ]);
 
         $amount = $request->amount;
+        $balanceBefore = $user->wallet_balance;
         $user->increment('wallet_balance', $amount);
+        $balanceAfter = $user->fresh()->wallet_balance;
 
         // Create transaction record
         Transaction::create([
             'user_id' => $user->id,
             'admin_id' => auth()->id(),
             'amount' => $amount,
+            'balance_before' => $balanceBefore,
+            'balance_after' => $balanceAfter,
             'status' => 'completed',
             'type' => 'admin_credit',
             'description' => "Admin credit to wallet by " . auth()->user()->name,
@@ -402,13 +444,17 @@ class AdminDashboardController extends Controller
         }
 
         $amount = $request->amount;
+        $balanceBefore = $user->wallet_balance;
         $user->decrement('wallet_balance', $amount);
+        $balanceAfter = $user->fresh()->wallet_balance;
 
         // Create transaction record
         Transaction::create([
             'user_id' => $user->id,
             'admin_id' => auth()->id(),
             'amount' => $amount,
+            'balance_before' => $balanceBefore,
+            'balance_after' => $balanceAfter,
             'status' => 'completed',
             'type' => 'admin_debit',
             'description' => "Admin debit from wallet by " . auth()->user()->name,
@@ -591,7 +637,9 @@ class AdminDashboardController extends Controller
     public function userTransactions(User $user)
     {
         $transactions = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
             ->with('order', 'admin')
+            ->select('id', 'user_id', 'admin_id', 'order_id', 'amount', 'balance_before', 'balance_after', 'status', 'type', 'description', 'created_at')
             ->latest()
             ->paginate(15);
 
@@ -681,6 +729,51 @@ class AdminDashboardController extends Controller
     }
 
     /**
+     * Export AFA orders to CSV or Excel.
+     */
+    public function exportAFAOrders(Request $request)
+    {
+        $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'exists:afa_orders,id',
+            'format' => 'required|in:csv,excel',
+        ]);
+
+        $orders = \App\Models\AFAOrders::whereIn('id', $request->order_ids)->get();
+
+        $filename = 'afa_orders_' . date('Y-m-d_H-i-s');
+        
+        if ($request->format === 'csv') {
+            $filename .= '.csv';
+            $headers = [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            ];
+
+            $callback = function() use ($orders) {
+                $file = fopen('php://output', 'w');
+                fputcsv($file, ['Full Name', 'Ghana Card Number', 'Phone', 'Date of Birth', 'Occupation', 'Region']);
+                
+                foreach ($orders as $order) {
+                    fputcsv($file, [
+                        $order->full_name,
+                        $order->ghana_card_number,
+                        $order->phone,
+                        $order->dob,
+                        $order->occupation,
+                        $order->region,
+                    ]);
+                }
+                fclose($file);
+            };
+
+            return response()->stream($callback, 200, $headers);
+        } else {
+            return new \App\Exports\AFAOrdersExport($orders);
+        }
+    }
+
+    /**
      * Toggle Jaybart order pusher functionality.
      */
     public function toggleJaybartOrderPusher(Request $request)
@@ -726,5 +819,17 @@ class AdminDashboardController extends Controller
         
         $status = $enabled ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "DataEasy order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle DataSource order pusher functionality.
+     */
+    public function toggleDataSourceOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('datasource_order_pusher_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "DataSource order pusher {$status} successfully.");
     }
 }

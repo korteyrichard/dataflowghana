@@ -13,7 +13,7 @@ interface AFAProduct {
 interface AFAOrder {
   id: number;
   full_name: string;
-  email: string;
+  ghana_card_number: string;
   phone: string;
   dob?: string;
   occupation?: string;
@@ -35,7 +35,7 @@ export default function AfaRegistration({ auth, afaProducts, afaOrders }: AFAReg
   const { data, setData, post, processing, errors, reset } = useForm({
     afa_product_id: '',
     full_name: '',
-    email: auth.user.email,
+    ghana_card_number: '',
     phone: auth.user.phone || '',
     dob: '',
     occupation: '',
@@ -173,20 +173,21 @@ export default function AfaRegistration({ auth, afaProducts, afaOrders }: AFAReg
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={data.email}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-gray-100"
-                  placeholder="Enter your email address"
-                />
-              </div>
+            {/* Ghana Card Number */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Ghana Card Number *
+              </label>
+              <input
+                type="text"
+                name="ghana_card_number"
+                value={data.ghana_card_number}
+                onChange={handleInputChange}
+                required
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                placeholder="e.g., GHA-53897537537-5"
+              />
+            </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -334,8 +335,8 @@ export default function AfaRegistration({ auth, afaProducts, afaOrders }: AFAReg
                                 <p className="text-gray-900 dark:text-gray-100">{order.full_name}</p>
                               </div>
                               <div>
-                                <strong className="text-gray-700 dark:text-gray-300">Email:</strong>
-                                <p className="text-gray-900 dark:text-gray-100">{order.email}</p>
+                                <strong className="text-gray-700 dark:text-gray-300">Ghana Card Number:</strong>
+                                <p className="text-gray-900 dark:text-gray-100">{order.ghana_card_number}</p>
                               </div>
                               <div>
                                 <strong className="text-gray-700 dark:text-gray-300">Phone:</strong>

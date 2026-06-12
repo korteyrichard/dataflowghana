@@ -2,22 +2,18 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Services\OrderStatusSyncService;
+use Illuminate\Console\Command;
 
 class SyncOrderStatuses extends Command
 {
-    protected $signature = 'orders:sync-status';
-    protected $description = 'Sync order statuses with external APIs';
+    protected $signature = 'orders:sync-statuses';
+    protected $description = 'Sync order statuses from all order pushers';
 
-    public function handle()
+    public function handle(OrderStatusSyncService $syncService)
     {
-        $this->info('Starting order status sync...');
-        
-        $smsService = app(\App\Services\MoolreSmsService::class);
-        $syncService = new OrderStatusSyncService($smsService);
+        $this->info('Syncing order statuses...');
         $syncService->syncOrderStatuses();
-        
-        $this->info('Order status sync completed.');
+        $this->info('Order statuses synced successfully!');
     }
 }

@@ -53,7 +53,9 @@ interface AdminOrdersPageProps {
   filterStatus: string;
   searchOrderId: string;
   searchBeneficiaryNumber: string;
+  searchUsername: string;
   dailyTotalSales: number;
+  allNetworks: string[];
   [key: string]: any;
 }
 
@@ -65,7 +67,9 @@ export default function AdminOrders() {
     filterStatus: initialStatusFilter,
     searchOrderId: initialSearchOrderId,
     searchBeneficiaryNumber: initialSearchBeneficiaryNumber,
+    searchUsername: initialSearchUsername,
     dailyTotalSales,
+    allNetworks,
   } = usePage<AdminOrdersPageProps>().props;
 
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
@@ -73,10 +77,12 @@ export default function AdminOrders() {
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [searchOrderId, setSearchOrderId] = useState(initialSearchOrderId);
   const [searchBeneficiaryNumber, setSearchBeneficiaryNumber] = useState(initialSearchBeneficiaryNumber);
+  const [searchUsername, setSearchUsername] = useState(initialSearchUsername);
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [bulkStatus, setBulkStatus] = useState('');
 
-  const networks = Array.from(new Set(orders.data.map(o => o.network).filter(Boolean)));
+  const networks = allNetworks || [];
+
 
   const handleFilterChange = (filterName: string, value: string) => {
     const newFilters: Record<string, string> = {};
@@ -85,16 +91,19 @@ export default function AdminOrders() {
     const status = filterName === 'status' ? value : statusFilter;
     const orderId = filterName === 'order_id' ? value : searchOrderId;
     const beneficiaryNumber = filterName === 'beneficiary_number' ? value : searchBeneficiaryNumber;
+    const username = filterName === 'username' ? value : searchUsername;
     
     if (network) newFilters.network = network;
     if (status) newFilters.status = status;
     if (orderId) newFilters.order_id = orderId;
     if (beneficiaryNumber) newFilters.beneficiary_number = beneficiaryNumber;
+    if (username) newFilters.username = username;
     
     setNetworkFilter(network);
     setStatusFilter(status);
     setSearchOrderId(orderId);
     setSearchBeneficiaryNumber(beneficiaryNumber);
+    setSearchUsername(username);
     router.get(route('admin.orders'), newFilters, { preserveState: true, replace: true });
   };
 
@@ -251,6 +260,17 @@ export default function AdminOrders() {
               className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
               value={searchOrderId}
               onChange={(e) => handleFilterChange('order_id', e.target.value)}
+            />
+          </div>
+          
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Username</label>
+            <input
+              type="text"
+              placeholder="Enter username..."
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={searchUsername}
+              onChange={(e) => handleFilterChange('username', e.target.value)}
             />
           </div>
           

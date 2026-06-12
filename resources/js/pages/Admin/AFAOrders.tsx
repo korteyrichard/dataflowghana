@@ -18,7 +18,7 @@ interface User {
 interface AFAOrder {
   id: number;
   full_name: string;
-  email: string;
+  ghana_card_number: string;
   phone: string;
   dob?: string;
   occupation?: string;
@@ -38,6 +38,8 @@ export default function AFAOrders() {
   const { afaOrders, auth } = usePage<AFAOrdersPageProps>().props;
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     setUpdatingStatus(orderId);
@@ -49,6 +51,62 @@ export default function AFAOrders() {
       console.error('Failed to update status');
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  const toggleSelectOrder = (orderId: number) => {
+    setSelectedOrders(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedOrders(
+      selectedOrders.length === afaOrders.length 
+        ? [] 
+        : afaOrders.map(order => order.id)
+    );
+  };
+
+  const handleExport = async (format: 'csv' | 'excel') => {
+    if (selectedOrders.length === 0) {
+      alert('Please select at least one order to export');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch('/admin/afa-orders/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        body: JSON.stringify({
+          order_ids: selectedOrders,
+          format: format,
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `afa_orders_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'csv'}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        setSelectedOrders([]);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -74,6 +132,30 @@ export default function AFAOrders() {
             </p>
           </div>
 
+          {selectedOrders.length > 0 && (
+            <div className="mb-6 bg-blue-50 dark:bg-blue-900 p-4 rounded-lg flex justify-between items-center">
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-100">
+                {selectedOrders.length} order(s) selected
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleExport('csv')}
+                  disabled={isExporting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded"
+                >
+                  Export as CSV
+                </button>
+                <button
+                  onClick={() => handleExport('excel')}
+                  disabled={isExporting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded"
+                >
+                  Export as Excel
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             {afaOrders.length === 0 ? (
               <div className="p-6 text-center text-gray-500 dark:text-gray-400">
@@ -85,10 +167,21 @@ export default function AFAOrders() {
                   <thead className="bg-gray-50 dark:bg-gray-700">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.length === afaOrders.length && afaOrders.length > 0}
+                          onChange={toggleSelectAll}
+                          className="rounded"
+                        />
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Order ID
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Customer
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Ghana Card Number
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Product
@@ -111,14 +204,24 @@ export default function AFAOrders() {
                     {afaOrders.map((order) => (
                       <React.Fragment key={order.id}>
                         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrders.includes(order.id)}
+                              onChange={() => toggleSelectOrder(order.id)}
+                              className="rounded"
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                             #{order.id}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                             <div>
                               <div className="font-medium">{order.user?.name || 'N/A'}</div>
-                              <div className="text-gray-500">{order.user?.email || 'N/A'}</div>
                             </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {order.ghana_card_number || 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                             {order.afaproduct?.name || 'N/A'}
@@ -154,15 +257,15 @@ export default function AFAOrders() {
                         </tr>
                         {expandedOrder === order.id && (
                           <tr>
-                            <td colSpan={7} className="px-6 py-4 bg-gray-50 dark:bg-gray-700">
+                            <td colSpan={9} className="px-6 py-4 bg-gray-50 dark:bg-gray-700">
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                 <div>
                                   <strong className="text-gray-700 dark:text-gray-300">Full Name:</strong>
                                   <p className="text-gray-900 dark:text-gray-100">{order.full_name}</p>
                                 </div>
                                 <div>
-                                  <strong className="text-gray-700 dark:text-gray-300">Email:</strong>
-                                  <p className="text-gray-900 dark:text-gray-100">{order.email}</p>
+                                  <strong className="text-gray-700 dark:text-gray-300">Ghana Card Number:</strong>
+                                  <p className="text-gray-900 dark:text-gray-100">{order.ghana_card_number}</p>
                                 </div>
                                 <div>
                                   <strong className="text-gray-700 dark:text-gray-300">Phone:</strong>

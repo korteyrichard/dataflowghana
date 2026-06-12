@@ -48,9 +48,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/process-bulk-to-cart', [CartController::class, 'processBulkToCart']);
 
     // Wallet balance route
-    Route::post('/dashboard/wallet/add', [DashboardController::class, 'addToWallet'])->name('dashboard.wallet.add');
+    Route::post('/dashboard/wallet/add', [DashboardController::class, 'addToWallet'])->middleware('throttle:10,1')->name('dashboard.wallet.add');
     Route::get('/wallet/callback', [DashboardController::class, 'handleWalletCallback'])->name('wallet.callback');
-    Route::post('/verify-payment', [WalletController::class, 'verifyPayment'])->name('verify.payment');
+    Route::post('/verify-payment', [WalletController::class, 'verifyPayment'])->middleware('throttle:10,1')->name('verify.payment');
 
     
     // Bundle sizes API
@@ -95,21 +95,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])->name('admin.')->group(fun
     Route::put('admin/afa-products/{afaProduct}', [\App\Http\Controllers\Admin\AFAProductController::class, 'update'])->name('afa-products.update');
     Route::delete('admin/afa-products/{afaProduct}', [\App\Http\Controllers\Admin\AFAProductController::class, 'destroy'])->name('afa-products.destroy');
     Route::get('admin/afa-orders', [\App\Http\Controllers\AdminDashboardController::class, 'afaOrders'])->name('afa-orders');
+    Route::match(['get', 'post'], 'admin/afa-orders/export', [\App\Http\Controllers\AdminDashboardController::class, 'exportAFAOrders'])->name('afa-orders.export');
     Route::put('admin/afa-orders/{order}/status', [\App\Http\Controllers\AdminDashboardController::class, 'updateAfaOrderStatus'])->name('afa.orders.updateStatus');
     Route::post('admin/toggle-jaybart-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleJaybartOrderPusher'])->name('toggle.jaybart.order.pusher');
     Route::post('admin/toggle-codecraft-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftOrderPusher'])->name('toggle.codecraft.order.pusher');
     Route::post('admin/toggle-datamaster-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDatamasterOrderPusher'])->name('toggle.datamaster.order.pusher');
     Route::post('admin/toggle-dataeasy-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataeasyOrderPusher'])->name('toggle.dataeasy.order.pusher');
+    Route::post('admin/toggle-datasource-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataSourceOrderPusher'])->name('toggle.datasource.order.pusher');
 });
 
 // Paystack payment routes
-Route::get('/payment', function () {
-    return view('payment');
-})->name('payment');
-Route::post('/payment/initialize', [PaymentController::class, 'initializePayment'])->name('payment.initialize');
+Route::post('/payment/initialize', [PaymentController::class, 'initializePayment'])->middleware('auth', 'throttle:10,1')->name('payment.initialize');
 Route::get('/payment/callback', [PaymentController::class, 'handleCallback'])->name('payment.callback');
-Route::get('/payment/success', function () { return 'Payment Successful!'; })->name('payment.success');
-Route::get('/payment/failed', function () { return 'Payment Failed!'; })->name('payment.failed');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

@@ -15,8 +15,9 @@ class WalletController extends Controller
     {
         return Inertia::render('Dashboard/Wallet', [
             'transactions' => Transaction::where('user_id', auth()->id())
-                ->whereIn('type', ['topup', 'admin_credit', 'admin_debit']) // Include admin transactions
-                ->select('id', 'amount', 'status', 'type', 'description', 'reference', 'created_at')
+                ->whereIn('type', ['topup', 'admin_credit', 'admin_debit'])
+                ->where('status', 'completed')
+                ->select('id', 'amount', 'status', 'type', 'description', 'reference', 'balance_before', 'balance_after', 'created_at')
                 ->latest()
                 ->paginate(10),
         ]);
@@ -24,103 +25,79 @@ class WalletController extends Controller
 
     public function verifyPayment(Request $request)
     {
-        \Log::info('verifyPayment method called', ['request_data' => $request->all(), 'user_id' => auth()->id()]);
+        \Log::info('Payment verification initiated', ['user_id' => auth()->id()]);
         
         $request->validate([
-            'reference' => 'required|string'
+            'reference' => 'required|string|max:100'
         ]);
 
         $reference = $request->reference;
         $userId = auth()->id();
 
-        // Find the transaction
-        \Log::info('Looking for transaction', ['reference' => $reference, 'user_id' => $userId]);
-        
         $transaction = Transaction::where('reference', $reference)
             ->where('user_id', $userId)
             ->where('type', 'topup')
+            ->lockForUpdate()
             ->first();
 
         if (!$transaction) {
-            // Check if transaction exists with different criteria
-            $anyTransaction = Transaction::where('reference', $reference)->first();
-            $userTransactions = Transaction::where('user_id', $userId)->where('type', 'topup')->get(['id', 'reference', 'status']);
-            
-            \Log::info('Transaction not found', [
-                'reference' => $reference,
-                'user_id' => $userId,
-                'any_transaction_with_reference' => $anyTransaction,
-                'user_topup_transactions' => $userTransactions
-            ]);
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Transaction not found'
-            ]);
+            \Log::warning('Transaction not found', ['reference' => $reference, 'user_id' => $userId]);
+            return response()->json(['success' => false, 'message' => 'Transaction not found']);
         }
 
-        \Log::info('Transaction found', ['transaction_id' => $transaction->id, 'status' => $transaction->status]);
-
-        // If already completed, prevent double crediting
         if ($transaction->status === 'completed') {
-            \Log::info('Transaction already completed');
-            return response()->json([
-                'success' => false,
-                'message' => 'Transaction already verified'
-            ]);
+            \Log::info('Transaction already completed', ['transaction_id' => $transaction->id]);
+            return response()->json(['success' => false, 'message' => 'Transaction already verified']);
         }
 
-        \Log::info('About to call Paystack API', ['reference' => $reference]);
-        
         try {
-            // Call Paystack Verify API
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . config('paystack.secret_key'),
-                'Content-Type' => 'application/json',
-            ])->get("https://api.paystack.co/transaction/verify/{$reference}");
+            $response = Http::timeout(15)
+                ->retry(2, 100)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . config('paystack.secret_key'),
+                    'Content-Type' => 'application/json',
+                ])->get("https://api.paystack.co/transaction/verify/{$reference}");
 
             $paystackData = $response->json();
             
-            \Log::info('Paystack API response', ['status_code' => $response->status(), 'response' => $paystackData]);
-
             if ($response->successful() && $paystackData['status'] && $paystackData['data']['status'] === 'success') {
-                // Use database transaction to ensure atomicity
                 DB::transaction(function () use ($transaction, $userId, $paystackData) {
-                    // Update transaction status and save Paystack reference
+                    $transaction = Transaction::lockForUpdate()->find($transaction->id);
+                    
+                    if ($transaction->status === 'completed') {
+                        throw new \Exception('Transaction already completed');
+                    }
+                    
                     $transaction->update([
                         'status' => 'completed',
                         'reference' => $paystackData['data']['reference'] ?? $transaction->reference
                     ]);
                     
-                    // Update user wallet balance
-                    $user = User::find($userId);
+                    $user = User::lockForUpdate()->find($userId);
                     $user->increment('wallet_balance', $transaction->amount);
+                    
+                    \Log::info('Wallet balance updated', [
+                        'user_id' => $userId,
+                        'amount' => $transaction->amount,
+                        'transaction_id' => $transaction->id
+                    ]);
                 });
 
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Payment verified and balance updated'
-                ]);
+                return response()->json(['success' => true, 'message' => 'Payment verified and balance updated']);
             } else {
-                // Update transaction with Paystack reference even if failed
-                if (isset($paystackData['data']['reference'])) {
-                    $transaction->update(['reference' => $paystackData['data']['reference']]);
-                }
-                
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment verification failed or transaction not successful',
-                    'debug' => [
-                        'paystack_response' => $paystackData,
-                        'reference' => $reference
-                    ]
+                \Log::warning('Payment verification failed', [
+                    'user_id' => $userId,
+                    'paystack_status' => $paystackData['status'] ?? 'unknown'
                 ]);
+                return response()->json(['success' => false, 'message' => 'Payment verification failed']);
             }
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error verifying payment: ' . $e->getMessage()
+            \Log::error('Payment verification error', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+                'reference' => $reference
             ]);
+            return response()->json(['success' => false, 'message' => 'Error verifying payment'], 500);
         }
     }
 

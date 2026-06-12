@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('afa_product_id')->constrained()->onDelete('cascade');
             $table->enum('status', ['PENDING', 'COMPLETED', 'CANCELLED']);
             $table->string('full_name');
-            $table->string('email');
+            $table->string('ghana_card_number');
             $table->string('phone');
             $table->date('dob');
             $table->string('occupation');

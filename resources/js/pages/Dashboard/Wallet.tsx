@@ -203,6 +203,8 @@ export default function Wallet({ auth, transactions }: WalletPageProps) {
                 <tr>
                   <th className="p-3 border whitespace-nowrap">ID</th>
                   <th className="p-3 border whitespace-nowrap">Amount</th>
+                  <th className="p-3 border whitespace-nowrap">Balance Before</th>
+                  <th className="p-3 border whitespace-nowrap">Balance After</th>
                   <th className="p-3 border whitespace-nowrap">Status</th>
                   <th className="p-3 border whitespace-nowrap">Date</th>
                   <th className="p-3 border whitespace-nowrap">Action</th>
@@ -223,6 +225,16 @@ export default function Wallet({ auth, transactions }: WalletPageProps) {
                     <tr key={tx.id} className="border-t dark:border-gray-700">
                       <td className="p-3 border">{tx.id}</td>
                       <td className="p-3 border">GHS {Number(tx.amount).toFixed(2)}</td>
+                      <td className="p-3 border">
+                        {tx.balance_before !== null && tx.balance_before !== undefined 
+                          ? `GHS ${Number(tx.balance_before).toFixed(2)}` 
+                          : '-'}
+                      </td>
+                      <td className="p-3 border">
+                        {tx.balance_after !== null && tx.balance_after !== undefined 
+                          ? `GHS ${Number(tx.balance_after).toFixed(2)}` 
+                          : '-'}
+                      </td>
                       <td className="p-3 border">
                         <span className={`px-2 py-1 rounded text-xs ${
                           tx.status === 'completed' ? 'bg-green-100 text-green-800' :
