@@ -76,16 +76,18 @@ class DashboardController extends Controller
                 ]);
             });
         
-        // Calculate total sales from completed orders
-        $totalSales = Order::where('user_id', $userId)
+        // Calculate total sales from completed transactions (more accurate)
+        $totalSales = Transaction::where('user_id', $userId)
             ->where('status', 'completed')
-            ->sum('total');
+            ->whereIn('type', ['order', 'bulk_order'])
+            ->sum('amount');
         
-        // Calculate today's sales from completed orders
-        $todaySales = Order::where('user_id', $userId)
+        // Calculate today's sales from completed transactions
+        $todaySales = Transaction::where('user_id', $userId)
             ->where('status', 'completed')
+            ->whereIn('type', ['order', 'bulk_order'])
             ->whereDate('created_at', $today)
-            ->sum('total');
+            ->sum('amount');
         
         // Get all stats in single query using CASE
         $orderStats = DB::selectOne(

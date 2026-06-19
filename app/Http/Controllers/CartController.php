@@ -177,7 +177,7 @@ class CartController extends Controller
         return redirect()->back()->with('success', 'Cart cleared successfully!');
     }
     
-    public function processExcelToCart(Request $request)
+    public function processExcelToPreview(Request $request)
     {
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv',
@@ -186,17 +186,13 @@ class CartController extends Controller
         
         try {
             $file = $request->file('file');
-            Log::info('Processing Excel file: ' . $file->getClientOriginalName());
             
             // Read CSV file directly
             $csvData = array_map('str_getcsv', file($file->getPathname()));
             
             if (empty($csvData)) {
-                Log::error('Excel file is empty or has no data');
                 return response()->json(['success' => false, 'message' => 'Excel file is empty']);
             }
-            
-            $data = [$csvData]; // Wrap in array to match Excel format
             
             $user = Auth::user();
             
@@ -231,15 +227,14 @@ class CartController extends Controller
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }
-            $addedCount = 0;
+            
+            $orders = [];
             $phoneNumbers = [];
             $duplicates = [];
             $unavailableVariants = [];
             
             foreach ($csvData as $index => $row) {
                 if ($index === 0) continue; // Skip header row
-                
-                Log::info('Processing row ' . $index . ': ' . json_encode($row));
                 
                 if (count($row) >= 2 && !empty($row[0]) && !empty($row[1])) {
                     $phoneNumber = trim($row[0]);
@@ -250,12 +245,9 @@ class CartController extends Controller
                         $phoneNumber = '0' . $phoneNumber;
                     }
                     
-                    Log::info('Phone: ' . $phoneNumber . ', Bundle: ' . $bundleSize);
-                    
                     // Check for duplicates
                     if (in_array($phoneNumber, $phoneNumbers)) {
                         $duplicates[] = $phoneNumber;
-                        Log::info('Duplicate phone number: ' . $phoneNumber);
                         continue;
                     }
                     $phoneNumbers[] = $phoneNumber;
@@ -270,8 +262,6 @@ class CartController extends Controller
                             $sizeKey = $bundleSize . 'GB'; // Add GB
                         }
                         
-                        Log::info('Looking for variant with size: ' . $sizeKey);
-                        
                         // Try both uppercase and lowercase versions
                         $variant = $product->variants()
                             ->where(function($query) use ($sizeKey) {
@@ -282,56 +272,33 @@ class CartController extends Controller
                             ->first();
                             
                         if ($variant) {
-                            Log::info('Found variant: ' . $variant->id . ' with price: ' . $variant->price);
-                            Cart::create([
-                                'user_id' => $user->id,
-                                'product_id' => $product->id,
-                                'product_variant_id' => $variant->id,
-                                'quantity' => 1,
-                                'beneficiary_number' => $phoneNumber,
-                                'network' => $request->network,
-                                'price' => $variant->price
-                            ]);
-                            $addedCount++;
-                            Log::info('Added to cart successfully');
+                            $orders[] = [
+                                'phone' => $phoneNumber,
+                                'bundle_size' => $bundleSize,
+                                'price' => $variant->price,
+                                'product_variant_id' => $variant->id
+                            ];
                         } else {
-                            Log::warning('No variant found for size: ' . $sizeKey);
-                            // Check what variants are actually available
-                            $allVariants = $product->variants()->where('status', 'IN STOCK')->get();
-                            Log::info('All available variants for this product: ' . $allVariants->pluck('variant_attributes.size')->implode(', '));
                             $unavailableVariants[] = "$phoneNumber ({$bundleSize}GB)";
                         }
-                    } else {
-                        Log::warning('Invalid phone number format: ' . $phoneNumber);
                     }
-                } else {
-                    Log::warning('Row has insufficient data or empty values');
                 }
-            }
-            
-            $message = "Successfully added {$addedCount} items to cart";
-            if (!empty($duplicates)) {
-                $message .= ". Duplicate numbers skipped: " . implode(', ', array_unique($duplicates));
-            }
-            if (!empty($unavailableVariants)) {
-                $message .= ". Unavailable variants: " . implode(', ', $unavailableVariants);
             }
             
             return response()->json([
                 'success' => true, 
-                'message' => $message
+                'orders' => $orders,
+                'message' => count($orders) . ' orders ready for preview'
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Excel processing error: ' . $e->getMessage() . ' | File: ' . $e->getFile() . ' | Line: ' . $e->getLine());
+            Log::error('Excel processing error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error processing Excel file: ' . $e->getMessage()]);
         }
     }
     
-    public function processBulkToCart(Request $request)
+    public function processBulkToPreview(Request $request)
     {
-        Log::info('Bulk order processing started', ['request' => $request->all()]);
-        
         $request->validate([
             'numbers' => 'required|string',
             'network' => 'required|string'
@@ -339,7 +306,6 @@ class CartController extends Controller
         
         try {
             $user = Auth::user();
-            Log::info('User authenticated', ['user_id' => $user->id, 'role' => $user->role]);
             
             // Determine product type based on user role
             if ($user->role === 'customer') {
@@ -355,7 +321,6 @@ class CartController extends Controller
             } else {
                 $productType = 'customer_product';
             }
-            Log::info('Product type determined', ['product_type' => $productType]);
             
             // Find the product by network and product type
             $product = Product::where('network', $request->network)
@@ -370,47 +335,36 @@ class CartController extends Controller
                     ->first();
             }
             
-            Log::info('Product search result', ['product_found' => $product ? true : false, 'network' => $request->network, 'product_type' => $productType]);
-            
             if (!$product) {
-                Log::error('Product not found', ['network' => $request->network, 'product_type' => $productType]);
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }
             
             $lines = explode("\n", trim($request->numbers));
-            Log::info('Processing lines', ['lines' => $lines]);
             
-            $addedCount = 0;
+            $orders = [];
             $phoneNumbers = [];
             $duplicates = [];
             $unavailableVariants = [];
             
             foreach ($lines as $line) {
                 $parts = preg_split('/\s+/', trim($line));
-                Log::info('Processing line', ['line' => $line, 'parts' => $parts]);
                 
                 if (count($parts) >= 2) {
                     $phoneNumber = trim($parts[0]);
                     $bundleSize = trim($parts[1]);
                     
-                    Log::info('Parsed data', ['phone' => $phoneNumber, 'bundle' => $bundleSize]);
-                    
                     // Check for duplicates
                     if (in_array($phoneNumber, $phoneNumbers)) {
                         $duplicates[] = $phoneNumber;
-                        Log::info('Duplicate phone number found', ['phone' => $phoneNumber]);
                         continue;
                     }
                     $phoneNumbers[] = $phoneNumber;
                     
                     // Validate phone number format
-                    Log::info('Validating phone number', ['phone' => $phoneNumber, 'length' => strlen($phoneNumber)]);
                     if (preg_match('/^\d{10}$/', $phoneNumber)) {
-                        Log::info('Phone number validation passed', ['phone' => $phoneNumber]);
                         // Find the variant by size - try multiple formats
                         $sizeKey = $bundleSize . 'gb'; // lowercase format
                         $alternateSizeKey = $bundleSize . 'GB'; // uppercase format
-                        Log::info('Looking for variant', ['size_keys' => [$sizeKey, $alternateSizeKey]]);
                         
                         $variant = $product->variants()
                             ->where(function($query) use ($sizeKey, $alternateSizeKey, $bundleSize) {
@@ -421,26 +375,13 @@ class CartController extends Controller
                             ->where('status', 'IN STOCK')
                             ->first();
                             
-                        Log::info('Variant search result', ['variant_found' => $variant ? true : false, 'tried_size_keys' => [$sizeKey, $alternateSizeKey, $bundleSize]]);
-                            
                         if ($variant) {
-                            Log::info('Found variant', ['variant_id' => $variant->id, 'price' => $variant->price]);
-                            
-                            try {
-                                Cart::create([
-                                    'user_id' => $user->id,
-                                    'product_id' => $product->id,
-                                    'product_variant_id' => $variant->id,
-                                    'quantity' => 1,
-                                    'beneficiary_number' => $phoneNumber,
-                                    'network' => $request->network,
-                                    'price' => $variant->price
-                                ]);
-                                $addedCount++;
-                                Log::info('Successfully added to cart', ['phone' => $phoneNumber, 'bundle' => $bundleSize]);
-                            } catch (\Exception $e) {
-                                Log::error('Failed to add to cart', ['phone' => $phoneNumber, 'error' => $e->getMessage()]);
-                            }
+                            $orders[] = [
+                                'phone' => $phoneNumber,
+                                'bundle_size' => $bundleSize,
+                                'price' => $variant->price,
+                                'product_variant_id' => $variant->id
+                            ];
                         } else {
                             $unavailableVariants[] = "$phoneNumber ({$bundleSize}GB)";
                         }
@@ -448,17 +389,10 @@ class CartController extends Controller
                 }
             }
             
-            $message = "Successfully added {$addedCount} items to cart";
-            if (!empty($duplicates)) {
-                $message .= ". Duplicate numbers skipped: " . implode(', ', array_unique($duplicates));
-            }
-            if (!empty($unavailableVariants)) {
-                $message .= ". Unavailable variants: " . implode(', ', $unavailableVariants);
-            }
-            
             return response()->json([
-                'success' => true, 
-                'message' => $message
+                'success' => true,
+                'orders' => $orders,
+                'message' => count($orders) . ' orders ready for preview'
             ]);
             
         } catch (\Exception $e) {

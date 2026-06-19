@@ -21,6 +21,7 @@ class TransactionsController extends Controller
             ->with('order')
             ->select('id', 'type', 'amount', 'balance_before', 'balance_after', 'description', 'created_at', 'order_id')
             ->latest()
+            ->orderByDesc('id')
             ->get()
             ->map(fn($t) => [
                 'id' => $t->id,

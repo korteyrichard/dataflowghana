@@ -117,7 +117,7 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
     formData.append('network', networkId);
     
     try {
-      const response = await fetch('/process-excel-to-cart', {
+      const response = await fetch('/process-excel-to-preview', {
         method: 'POST',
         headers: {
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
@@ -126,9 +126,13 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.orders) {
         setExcelFile(null);
-        router.reload();
+        // Redirect to bulk order preview
+        router.post(route('bulk.orders.preview'), {
+          orders: data.orders,
+          network: networkId
+        });
       } else {
         alert(data.message || 'Failed to process Excel file');
       }
@@ -144,7 +148,7 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
     
     setIsProcessing(true);
     try {
-      const response = await fetch('/process-bulk-to-cart', {
+      const response = await fetch('/process-bulk-to-preview', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,9 +161,13 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
       });
       
       const data = await response.json();
-      if (data.success) {
+      if (data.success && data.orders) {
         setBulkNumbers('');
-        router.reload();
+        // Redirect to bulk order preview
+        router.post(route('bulk.orders.preview'), {
+          orders: data.orders,
+          network: networkId
+        });
       } else {
         alert(data.message || 'Failed to process bulk numbers');
       }
@@ -273,61 +281,62 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
               
 
               <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-                {/* Excel Upload Section */}
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-white">
-                    Upload Excel File
-                  </label>
-                  <div className="">
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleFileChange}
-                      className="flex-1 px-3 py-2 bg-white rounded border-0 text-gray-700 text-sm"
-                      placeholder="Choose File"
-                    />
-                    {/* <span className="px-3 py-2 bg-white bg-opacity-20 text-slate-700 rounded text-sm truncate">
-                      {excelFile ? excelFile.name : 'No file chosen'}
-                    </span> */}
+                {/* Excel Upload Section - Only for MTN */}
+                {network.id === 'MTN' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-white">
+                      Upload Excel/CSV File (Bulk Preview)
+                    </label>
+                    <div className="">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleFileChange}
+                        className="flex-1 px-3 py-2 bg-white rounded border-0 text-gray-700 text-sm"
+                        placeholder="Choose File"
+                      />
+                    </div>
+                    <Button 
+                      onClick={() => handleProcessExcel(network.id)}
+                      disabled={!excelFile || isProcessing}
+                      className="mt-3 px-6 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded font-medium"
+                    >
+                      {isProcessing ? 'Processing...' : 'Upload & Preview'}
+                    </Button>
                   </div>
-                  <Button 
-                    onClick={() => handleProcessExcel(network.id)}
-                    disabled={!excelFile || isProcessing}
-                    className="mt-3 px-6 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded font-medium"
-                  >
-                    {isProcessing ? 'Processing...' : 'Upload'}
-                  </Button>
-                </div>
+                )}
 
-                {/* Bulk Text Input Section */}
-                <div>
-                  <button 
-                    onClick={() => setShowBulkInput(showBulkInput === network.id ? null : network.id)}
-                    className="px-4 py-2 bg-gray-800 text-white rounded font-medium mb-3"
-                  >
-                    📦 Text Input Orders
-                  </button>
-                  {showBulkInput === network.id && (
-                    <div>
-                      <Textarea
-                        placeholder="0241234567 5
+                {/* Bulk Text Input Section - Only for MTN */}
+                {network.id === 'MTN' && (
+                  <div>
+                    <button 
+                      onClick={() => setShowBulkInput(showBulkInput === network.id ? null : network.id)}
+                      className="px-4 py-2 bg-gray-800 text-white rounded font-medium mb-3"
+                    >
+                      📦 Bulk Text Orders (Preview)
+                    </button>
+                    {showBulkInput === network.id && (
+                      <div>
+                        <Textarea
+                          placeholder="0241234567 5
 0558765432 10 
 0501234567 3"
-                        value={bulkNumbers}
-                        onChange={(e) => setBulkNumbers(e.target.value)}
-                        rows={4}
-                        className="w-full bg-white text-gray-700"
-                      />
-                      <Button 
-                        onClick={() => handleProcessBulk(network.id)}
-                        disabled={!bulkNumbers.trim() || isProcessing}
-                        className="mt-3 px-6 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded font-medium"
-                      >
-                        {isProcessing ? 'Processing...' : 'Add Bulk to Cart'}
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                          value={bulkNumbers}
+                          onChange={(e) => setBulkNumbers(e.target.value)}
+                          rows={4}
+                          className="w-full bg-white text-gray-700"
+                        />
+                        <Button 
+                          onClick={() => handleProcessBulk(network.id)}
+                          disabled={!bulkNumbers.trim() || isProcessing}
+                          className="mt-3 px-6 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded font-medium"
+                        >
+                          {isProcessing ? 'Processing...' : 'Preview Bulk Orders'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Single Order Section */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

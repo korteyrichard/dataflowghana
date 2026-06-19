@@ -142,6 +142,157 @@ class DataSourceOrderPusherService
         return $phone;
     }
 
+    public function pushBulkOrderToApi(array $orders, array $orderData)
+    {
+        $endpoint = '/api/v1/order/bulk/create';
+        $timestamp = time();
+        $method = 'POST';
+
+        $bulkData = [];
+        foreach ($orderData as $data) {
+            $bulkData[] = [
+                'beneficiary_number' => $this->formatPhone($data['phone']),
+                'data_size' => (float)filter_var($data['bundle_size'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION)
+            ];
+        }
+
+        $bodyArray = ['orders' => $bulkData];
+        $body = json_encode($bodyArray, JSON_UNESCAPED_SLASHES);
+
+        $signatureString = $timestamp . $method . $endpoint . $body;
+        $signature = hash_hmac('sha256', $signatureString, $this->secretKey);
+
+        Log::info('DataSource Bulk Order Pusher - Pushing orders', [
+            'order_count' => count($orders),
+            'base_url' => $this->baseUrl,
+            'endpoint' => $endpoint,
+            'bulk_data' => $bulkData,
+            'signature' => $signature
+        ]);
+
+        try {
+            $response = Http::withHeaders([
+                'X-API-KEY' => $this->apiKey,
+                'X-Timestamp' => $timestamp,
+                'X-Signature' => $signature,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json'
+            ])->timeout(60)->connectTimeout(10)->post($this->baseUrl . $endpoint, $bodyArray);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+
+                Log::info('DataSource Bulk Order Pusher API response', [
+                    'order_count' => count($orders),
+                    'response' => $responseData
+                ]);
+
+                if (isset($responseData['success']) && $responseData['success'] === true) {
+                    // Store bulk reference ID if provided - ALL orders get the same reference
+                    $bulkReference = $responseData['bulk_reference'] ?? $responseData['batchreference'] ?? null;
+                    
+                    if ($bulkReference) {
+                        // Update all orders with success status and the SAME bulk reference
+                        foreach ($orders as $order) {
+                            // Make sure we have an Order model, not an array
+                            if (is_array($order)) {
+                                $orderModel = Order::find($order['id']);
+                            } else {
+                                $orderModel = $order;
+                            }
+                            
+                            if ($orderModel) {
+                                $orderModel->update([
+                                    'api_status' => 'success',
+                                    'reference_id' => $bulkReference  // Same reference for all orders
+                                ]);
+                            }
+                        }
+                        
+                        Log::info('Bulk orders pushed to DataSource successfully - all orders share same reference', [
+                            'order_count' => count($orders),
+                            'bulk_reference' => $bulkReference,
+                            'order_ids' => collect($orders)->map(function($order) {
+                                return is_array($order) ? $order['id'] : $order->id;
+                            })->toArray()
+                        ]);
+                    } else {
+                        // No reference provided, just update status
+                        foreach ($orders as $order) {
+                            // Make sure we have an Order model, not an array
+                            if (is_array($order)) {
+                                $orderModel = Order::find($order['id']);
+                            } else {
+                                $orderModel = $order;
+                            }
+                            
+                            if ($orderModel) {
+                                $orderModel->update(['api_status' => 'success']);
+                            }
+                        }
+                        
+                        Log::warning('Bulk orders pushed successfully but no reference ID provided', [
+                            'order_count' => count($orders)
+                        ]);
+                    }
+                } else {
+                    // Update all orders with failed status
+                    foreach ($orders as $order) {
+                        // Make sure we have an Order model, not an array
+                        if (is_array($order)) {
+                            $orderModel = Order::find($order['id']);
+                        } else {
+                            $orderModel = $order;
+                        }
+                        
+                        if ($orderModel) {
+                            $orderModel->update(['api_status' => 'failed']);
+                        }
+                    }
+                    Log::warning('DataSource Bulk Order Pusher API response indicates failure', [
+                        'order_count' => count($orders),
+                        'response' => $responseData
+                    ]);
+                }
+            } else {
+                foreach ($orders as $order) {
+                    // Make sure we have an Order model, not an array
+                    if (is_array($order)) {
+                        $orderModel = Order::find($order['id']);
+                    } else {
+                        $orderModel = $order;
+                    }
+                    
+                    if ($orderModel) {
+                        $orderModel->update(['api_status' => 'failed']);
+                    }
+                }
+                Log::error('DataSource Bulk Order Pusher API call failed', [
+                    'order_count' => count($orders),
+                    'status' => $response->status(),
+                    'response' => $response->body()
+                ]);
+            }
+        } catch (\Exception $e) {
+            foreach ($orders as $order) {
+                // Make sure we have an Order model, not an array
+                if (is_array($order)) {
+                    $orderModel = Order::find($order['id']);
+                } else {
+                    $orderModel = $order;
+                }
+                
+                if ($orderModel) {
+                    $orderModel->update(['api_status' => 'failed']);
+                }
+            }
+            Log::error('DataSource Bulk Order Pusher API exception', [
+                'order_count' => count($orders),
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
     private function isMtnProduct($productName)
     {
         return stripos($productName, 'mtn') !== false;

@@ -45,8 +45,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
     Route::delete('/cart/{cart}', [CartController::class, 'destroy'])->name('remove.from.cart');
     Route::post('/cart/clear-all', [CartController::class, 'clearAll'])->name('clear.cart');
-    Route::post('/process-excel-to-cart', [CartController::class, 'processExcelToCart']);
-    Route::post('/process-bulk-to-cart', [CartController::class, 'processBulkToCart']);
+    Route::post('/process-excel-to-preview', [CartController::class, 'processExcelToPreview']);
+    Route::post('/process-bulk-to-preview', [CartController::class, 'processBulkToPreview']);
+
+    // Bulk order routes
+    Route::get('/bulk-orders/preview', [\App\Http\Controllers\BulkOrderController::class, 'preview'])->name('bulk.orders.preview.get');
+    Route::post('/bulk-orders/preview', [\App\Http\Controllers\BulkOrderController::class, 'preview'])->name('bulk.orders.preview');
+    Route::post('/bulk-orders/process', [\App\Http\Controllers\BulkOrderController::class, 'processBulk'])->name('bulk.orders.process');
 
     // Wallet balance route
     Route::post('/dashboard/wallet/add', [DashboardController::class, 'addToWallet'])->middleware('throttle:10,1')->name('dashboard.wallet.add');
