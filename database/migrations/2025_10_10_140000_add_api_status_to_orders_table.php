@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('orders', function (Blueprint $table) {
             if (!Schema::hasColumn('orders', 'api_status')) {
-                $table->enum('api_status', ['success', 'failed', 'disabled'])->nullable()->after('reference_id');
+                $table->enum('api_status', ['success', 'failed', 'disabled', 'pending'])->nullable()->after('reference_id');
             }
         });
     }

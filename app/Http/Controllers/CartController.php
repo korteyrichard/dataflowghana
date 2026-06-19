@@ -28,6 +28,8 @@ class CartController extends Controller
                 $productType = 'customer_product';
             } elseif ($user->role === 'agent') {
                 $productType = 'agent_product';
+            } elseif ($user->role === 'superAgent') {
+                $productType = 'super_agent_product';
             } elseif ($user->role === 'elite') {
                 $productType = 'elite_product';
             } elseif ($user->role === 'dealer' || $user->role === 'admin') {
@@ -163,6 +165,17 @@ class CartController extends Controller
         $cart->delete();
         return redirect()->back()->with('success', 'Product removed from cart!');
     }
+
+    public function clearAll()
+    {
+        Cart::where('user_id', Auth::id())->delete();
+        
+        if (request()->expectsJson()) {
+            return response()->json(['success' => true, 'message' => 'Cart cleared successfully']);
+        }
+        
+        return redirect()->back()->with('success', 'Cart cleared successfully!');
+    }
     
     public function processExcelToCart(Request $request)
     {
@@ -192,6 +205,8 @@ class CartController extends Controller
                 $productType = 'customer_product';
             } elseif ($user->role === 'agent') {
                 $productType = 'agent_product';
+            } elseif ($user->role === 'superAgent') {
+                $productType = 'super_agent_product';
             } elseif ($user->role === 'elite') {
                 $productType = 'elite_product';
             } elseif ($user->role === 'dealer' || $user->role === 'admin') {
@@ -331,6 +346,10 @@ class CartController extends Controller
                 $productType = 'customer_product';
             } elseif ($user->role === 'agent') {
                 $productType = 'agent_product';
+            } elseif ($user->role === 'superAgent') {
+                $productType = 'super_agent_product';
+            } elseif ($user->role === 'elite') {
+                $productType = 'elite_product';
             } elseif ($user->role === 'dealer' || $user->role === 'admin') {
                 $productType = 'dealer_product';
             } else {

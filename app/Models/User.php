@@ -117,4 +117,14 @@ class User extends Authenticatable
     {
         return $this->role === 'admin';
     }
+
+    /**
+     * Check if the user is a superAgent.
+     *
+     * @return bool
+     */
+    public function isSuperAgent(): bool
+    {
+        return $this->role === 'superAgent';
+    }
 }

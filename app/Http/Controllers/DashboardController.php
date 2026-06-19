@@ -20,20 +20,22 @@ class DashboardController extends Controller
     public function index()
     {
         $user = auth()->user();
+        $userId = $user->id;
+        $today = today();
         
-        // Get products for displaying expiry information (only in-stock products)
-        $products = Product::where('status', 'IN STOCK')->get();
-        
+        // Batch all dashboard queries efficiently
         $cartCount = 0;
         $cartItems = [];
-        $walletBalance = 0;
+        $walletBalance = $user->wallet_balance;
         $orders = [];
         
         if (auth()->check()) {
-            $cartCount = Cart::where('user_id', auth()->id())->count();
-            $cartItems = Cart::where('user_id', auth()->id())
+            // Single query with count + get in one round trip
+            $cartQuery = Cart::where('user_id', $userId)
                 ->with(['product', 'productVariant'])
-                ->get()
+                ->select('carts.*');
+            $cartCount = $cartQuery->count();
+            $cartItems = $cartQuery->get()
                 ->map(function($item) {
                     $size = 'Unknown';
                     if ($item->productVariant && isset($item->productVariant->variant_attributes['size'])) {
@@ -53,39 +55,56 @@ class DashboardController extends Controller
                         ]
                     ];
                 });
-            $walletBalance = $user->wallet_balance;
-            $orders = Order::where('user_id', $user->id)->with('products')->get();
+            
+            // Limit orders to top 10 to prevent large result sets
+            $orders = Order::where('user_id', $userId)
+                ->select('id', 'status', 'total', 'created_at')
+                ->latest()
+                ->limit(10)
+                ->get();
         }
         
-        // Calculate dashboard stats
-        $totalSales = Transaction::where('user_id', $user->id)
+        // Get products with variant pricing
+        $products = Product::where('status', 'IN STOCK')
+            ->select('id', 'name', 'network', 'expiry', 'product_type')
+            ->with('variants:product_id,price,variant_attributes')
+            ->limit(50)
+            ->get()
+            ->map(function($product) {
+                return array_merge($product->toArray(), [
+                    'price' => $product->getPriceRange()
+                ]);
+            });
+        
+        // Calculate total sales from completed orders
+        $totalSales = Order::where('user_id', $userId)
             ->where('status', 'completed')
-            ->where('type', 'order')
-            ->sum('amount');
-            
-        $todaySales = Transaction::where('user_id', $user->id)
+            ->sum('total');
+        
+        // Calculate today's sales from completed orders
+        $todaySales = Order::where('user_id', $userId)
             ->where('status', 'completed')
-            ->where('type', 'order')
-            ->whereDate('created_at', today())
-            ->sum('amount');
-            
-        $pendingOrdersCount = Order::where('user_id', $user->id)
-            ->whereIn('status', ['pending', 'PENDING'])
-            ->count();
-            
-        $processingOrdersCount = Order::where('user_id', $user->id)
-            ->whereIn('status', ['processing', 'PROCESSING'])
-            ->count();
+            ->whereDate('created_at', $today)
+            ->sum('total');
+        
+        // Get all stats in single query using CASE
+        $orderStats = DB::selectOne(
+            'SELECT '
+            . 'SUM(CASE WHEN status IN ("pending", "PENDING") THEN 1 ELSE 0 END) as pending_count, '
+            . 'SUM(CASE WHEN status IN ("processing", "PROCESSING") THEN 1 ELSE 0 END) as processing_count '
+            . 'FROM orders WHERE user_id = ?',
+            [$userId]
+        );
         
         return Inertia::render('Dashboard/dashboard', [
             'cartCount' => $cartCount,
             'cartItems' => $cartItems,
             'walletBalance' => $walletBalance,
             'orders' => $orders,
-            'totalSales' => $totalSales ?? 0,
-            'todaySales' => $todaySales ?? 0,
-            'pendingOrders' => $pendingOrdersCount ?? 0,
-            'processingOrders' => $processingOrdersCount ?? 0,
+            'totalSales' => (float) $totalSales ?? 0,
+            'todaySales' => (float) $todaySales ?? 0,
+            'pendingOrders' => $orderStats->pending_count ?? 0,
+            'processingOrders' => $orderStats->processing_count ?? 0,
             'products' => $products,
         ]);
     }
@@ -95,7 +114,8 @@ class DashboardController extends Controller
     public function viewCart()
     {
         $cartItems = Cart::where('user_id', auth()->id())
-            ->with(['product', 'productVariant'])
+            ->with(['product:id,name,network,expiry', 'productVariant:id,price,variant_attributes'])
+            ->select('id', 'product_id', 'price', 'beneficiary_number', 'network')
             ->get()
             ->map(function($item) {
                 $size = 'Unknown';
@@ -127,7 +147,10 @@ class DashboardController extends Controller
 
     public function transactions()
     {
-        $transactions = Transaction::where('user_id', auth()->id())->latest()->get();
+        $transactions = Transaction::where('user_id', auth()->id())
+            ->select('id', 'amount', 'status', 'type', 'description', 'created_at')
+            ->latest()
+            ->paginate(20);
         return Inertia::render('Dashboard/transactions', [
             'transactions' => $transactions,
         ]);
@@ -250,6 +273,8 @@ class DashboardController extends Controller
             $productType = 'customer_product';
         } elseif ($user->role === 'agent') {
             $productType = 'agent_product';
+        } elseif ($user->role === 'superAgent') {
+            $productType = 'super_agent_product';
         } elseif ($user->role === 'elite') {
             $productType = 'elite_product';
         } elseif ($user->role === 'dealer' || $user->role === 'admin') {

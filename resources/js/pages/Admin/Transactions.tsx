@@ -71,7 +71,7 @@ const formatBalance = (balance: number | null | undefined): string => {
     return '-';
   }
   const num = typeof balance === 'string' ? parseFloat(balance) : balance;
-  return isNaN(num) ? '-' : `$${num.toFixed(2)}`;
+  return isNaN(num) ? '-' : `₵${num.toFixed(2)}`;
 };
 
 export default function AdminTransactions() {
@@ -126,7 +126,7 @@ export default function AdminTransactions() {
                   <tr key={transaction.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200">
                     <td className="px-4 py-3 font-bold">{transaction.id}</td>
                     <td className="px-4 py-3 text-sm">{transaction.user?.name || transaction.order?.user?.name}</td>
-                    <td className="px-4 py-3 text-sm">${transaction.amount}</td>
+                    <td className="px-4 py-3 text-sm">₵{transaction.amount}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${typeColors[transaction.type]}`}>

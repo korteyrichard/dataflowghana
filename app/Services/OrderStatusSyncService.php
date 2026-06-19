@@ -33,7 +33,7 @@ class OrderStatusSyncService
         $dataEasySync->syncOrderStatuses();
         
         // Sync DataSource orders (Order Pusher)
-        $dataSourceSync = new DataSourceOrderStatusSyncService($this->smsService);
+        $dataSourceSync = new DataSourceOrderStatusSyncService();
         $dataSourceSync->syncOrderStatuses();
         
         foreach ($processingOrders as $order) {

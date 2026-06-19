@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import DashboardLayout from '../../layouts/DashboardLayout';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, usePage, Link, router } from '@inertiajs/react';
 
 interface Product {
   id: number;
@@ -24,8 +24,21 @@ interface Order {
   products: Product[];
 }
 
+interface PaginationLink {
+  url: string | null;
+  label: string;
+  active: boolean;
+}
+
 interface OrdersPageProps {
-  orders: Order[];
+  orders: {
+    data: Order[];
+    current_page: number;
+    total: number;
+    per_page: number;
+    last_page: number;
+    links: PaginationLink[];
+  };
   auth: any;
   [key: string]: any;
 }
@@ -33,25 +46,31 @@ interface OrdersPageProps {
 export default function OrdersPage() {
   const { orders, auth } = usePage<OrdersPageProps>().props;
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
-  const [networkFilter, setNetworkFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [beneficiaryFilter, setBeneficiaryFilter] = useState('');
-  const [orderIdFilter, setOrderIdFilter] = useState('');
+  
+  const params = new URLSearchParams(window.location.search);
+  const [networkFilter, setNetworkFilter] = useState(params.get('network') || '');
+  const [statusFilter, setStatusFilter] = useState(params.get('status') || '');
+  const [beneficiaryFilter, setBeneficiaryFilter] = useState(params.get('beneficiary') || '');
+  const [orderIdFilter, setOrderIdFilter] = useState(params.get('order_id') || '');
 
-  // Extract unique networks and statuses for filter dropdowns
-  const networks = Array.from(new Set(orders.map(o => o.network).filter(Boolean)));
-  const statuses = Array.from(new Set(orders.map(o => o.status).filter(Boolean)));
+  const ordersList = orders.data || [];
 
-  const filteredOrders = orders.filter(order => {
-    const matchesNetwork = !networkFilter || order.network === networkFilter;
-    const matchesStatus = !statusFilter || order.status === statusFilter;
-    const matchesBeneficiary = !beneficiaryFilter || 
-      (order.products[0]?.pivot?.beneficiary_number || order.beneficiary_number || '')
-        .toLowerCase().includes(beneficiaryFilter.toLowerCase());
-    const matchesOrderId = !orderIdFilter || 
-      order.id.toString().includes(orderIdFilter);
-    return matchesNetwork && matchesStatus && matchesBeneficiary && matchesOrderId;
-  });
+  const networks = Array.from(new Set(ordersList.map(o => o.network).filter(Boolean)));
+  const statuses = Array.from(new Set(ordersList.map(o => o.status).filter(Boolean)));
+
+  const handleFilterChange = (filterType: string, value: string) => {
+    const params = new URLSearchParams(window.location.search);
+    
+    if (value) {
+      params.set(filterType, value);
+    } else {
+      params.delete(filterType);
+    }
+    
+    params.set('page', '1');
+    
+    router.get(route('dashboard.orders'), Object.fromEntries(params));
+  };
 
   const handleExpand = (orderId: number) => {
     setExpandedOrder(expandedOrder === orderId ? null : orderId);
@@ -103,7 +122,10 @@ export default function OrdersPage() {
                   <select
                     className="border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 w-full"
                     value={networkFilter}
-                    onChange={e => setNetworkFilter(e.target.value)}
+                    onChange={e => {
+                      setNetworkFilter(e.target.value);
+                      handleFilterChange('network', e.target.value);
+                    }}
                   >
                     <option value="">All Networks</option>
                     {networks.map(network => (
@@ -117,7 +139,10 @@ export default function OrdersPage() {
                   <select
                     className="border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 w-full"
                     value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value)}
+                    onChange={e => {
+                      setStatusFilter(e.target.value);
+                      handleFilterChange('status', e.target.value);
+                    }}
                   >
                     <option value="">All Statuses</option>
                     {statuses.map(status => (
@@ -133,7 +158,10 @@ export default function OrdersPage() {
                     placeholder="Search by phone number"
                     className="border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 w-full"
                     value={beneficiaryFilter}
-                    onChange={e => setBeneficiaryFilter(e.target.value)}
+                    onChange={e => {
+                      setBeneficiaryFilter(e.target.value);
+                      handleFilterChange('beneficiary', e.target.value);
+                    }}
                   />
                 </div>
                 
@@ -144,13 +172,16 @@ export default function OrdersPage() {
                     placeholder="Search by order ID"
                     className="border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-sm bg-white dark:bg-gray-800 w-full"
                     value={orderIdFilter}
-                    onChange={e => setOrderIdFilter(e.target.value)}
+                    onChange={e => {
+                      setOrderIdFilter(e.target.value);
+                      handleFilterChange('order_id', e.target.value);
+                    }}
                   />
                 </div>
               </div>
             </div>
 
-            {filteredOrders.length === 0 ? (
+            {ordersList.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-gray-400 dark:text-gray-500 text-lg mb-2">No orders found</div>
                 <div className="text-gray-500 dark:text-gray-400 text-sm">Try adjusting your filters or place your first order</div>
@@ -172,9 +203,9 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-                      {filteredOrders.map(order => (
+                      {ordersList.map(order => (
                         <React.Fragment key={order.id}>
-                          <tr className="hover:bg-blue-50 dark:hover:bg-gray-800 transition-all duration-200">
+                          <tr className="hover:bg-blue-50 dark:hover:bg-gray-800 transition-all duration-200 cursor-pointer" onClick={() => handleExpand(order.id)}>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-bold text-gray-900 dark:text-gray-100">#{order.id}</div>
                             </td>
@@ -277,9 +308,9 @@ export default function OrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-                      {filteredOrders.map(order => (
+                      {ordersList.map(order => (
                         <React.Fragment key={order.id}>
-                          <tr className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200">
+                          <tr className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 cursor-pointer" onClick={() => handleExpand(order.id)}>
                             <td className="px-3 py-3">
                               <div className="text-sm font-bold text-gray-900 dark:text-gray-100">#{order.id}</div>
                               <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -338,6 +369,39 @@ export default function OrdersPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination */}
+                {orders.last_page > 1 && (
+                  <div className="px-6 py-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-4">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Showing <span className="font-medium">{(orders.current_page - 1) * orders.per_page + 1}</span> to <span className="font-medium">{Math.min(orders.current_page * orders.per_page, orders.total)}</span> of <span className="font-medium">{orders.total}</span> orders
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {orders.links.map((link, index) => (
+                        link.url ? (
+                          <Link
+                            key={index}
+                            href={link.url}
+                            className={`px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+                              link.active
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {link.label.replace(/&laquo;/, '«').replace(/&raquo;/, '»')}
+                          </Link>
+                        ) : (
+                          <span
+                            key={index}
+                            className="px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                          >
+                            {link.label.replace(/&laquo;/, '«').replace(/&raquo;/, '»')}
+                          </span>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>

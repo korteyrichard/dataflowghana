@@ -81,7 +81,7 @@ class DataSourceOrderPusherService
                 'X-Signature' => $signature,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json'
-            ])->timeout(30)->post($this->baseUrl . $endpoint, $bodyArray);
+            ])->timeout(60)->connectTimeout(10)->post($this->baseUrl . $endpoint, $bodyArray);
 
             if ($response->successful()) {
                 $responseData = $response->json();

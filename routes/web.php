@@ -44,6 +44,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/add-to-cart', [CartController::class, 'store'])->name('add.to.cart');
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
     Route::delete('/cart/{cart}', [CartController::class, 'destroy'])->name('remove.from.cart');
+    Route::post('/cart/clear-all', [CartController::class, 'clearAll'])->name('clear.cart');
     Route::post('/process-excel-to-cart', [CartController::class, 'processExcelToCart']);
     Route::post('/process-bulk-to-cart', [CartController::class, 'processBulkToCart']);
 

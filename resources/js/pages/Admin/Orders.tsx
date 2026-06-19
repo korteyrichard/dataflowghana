@@ -56,6 +56,8 @@ interface AdminOrdersPageProps {
   searchUsername: string;
   dailyTotalSales: number;
   allNetworks: string[];
+  pendingOrdersCount: number;
+  processingOrdersCount: number;
   [key: string]: any;
 }
 
@@ -70,6 +72,8 @@ export default function AdminOrders() {
     searchUsername: initialSearchUsername,
     dailyTotalSales,
     allNetworks,
+    pendingOrdersCount,
+    processingOrdersCount,
   } = usePage<AdminOrdersPageProps>().props;
 
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
@@ -185,10 +189,20 @@ export default function AdminOrders() {
     >
       <Head title="Admin Orders" />
       <div className="max-w-6xl mx-auto py-10 px-2 sm:px-4">
-        {/* Daily Sales Summary */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
-          <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-300 mb-2">Today's Sales Summary</h3>
-          <p className="text-2xl font-bold text-blue-800 dark:text-blue-200">GHS {dailyTotalSales || '0.00'}</p>
+        {/* Order Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-300 mb-2">Pending Orders</h3>
+            <p className="text-3xl font-bold text-blue-800 dark:text-blue-200">{pendingOrdersCount}</p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border border-orange-200 dark:border-orange-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-orange-700 dark:text-orange-300 mb-2">Processing Orders</h3>
+            <p className="text-3xl font-bold text-orange-800 dark:text-orange-200">{processingOrdersCount}</p>
+          </div>
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-green-700 dark:text-green-300 mb-2">Today's Sales</h3>
+            <p className="text-3xl font-bold text-green-800 dark:text-green-200">GHS {dailyTotalSales || '0.00'}</p>
+          </div>
         </div>
         {/* Bulk Actions */}
         {selectedOrders.length > 0 && (

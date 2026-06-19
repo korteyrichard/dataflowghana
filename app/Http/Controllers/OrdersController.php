@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\Cart;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,17 +19,40 @@ use App\Models\Setting;
 class OrdersController extends Controller
 {
     // Display a listing of the user's orders
-    public function index()
+    public function index(Request $request)
     {
-        $orders = Order::with(['products' => function($query) {
-            $query->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id');
-        }])->where('user_id', Auth::id())->latest()->get();
+        $query = Order::with([
+            'products' => function($query) {
+                $query->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id')
+                    ->select('products.id', 'products.name');
+            }
+        ])->where('user_id', auth()->id())
+            ->select('id', 'user_id', 'status', 'total', 'beneficiary_number', 'network', 'api_status', 'created_at');
         
-        // Transform orders to include variant information
-        $orders = $orders->map(function($order) {
+        if ($request->get('network')) {
+            $query->where('network', $request->get('network'));
+        }
+        
+        if ($request->get('status')) {
+            $query->where('status', $request->get('status'));
+        }
+        
+        if ($request->get('beneficiary')) {
+            $beneficiary = $request->get('beneficiary');
+            $query->where('beneficiary_number', 'like', '%' . $beneficiary . '%');
+        }
+        
+        if ($request->get('order_id')) {
+            $query->where('id', 'like', '%' . $request->get('order_id') . '%');
+        }
+        
+        $orders = $query->latest()->paginate(50);
+        
+        $orders->getCollection()->transform(function($order) {
             $order->products = $order->products->map(function($product) {
                 if ($product->pivot->product_variant_id) {
-                    $variant = \App\Models\ProductVariant::find($product->pivot->product_variant_id);
+                    $variant = \App\Models\ProductVariant::select('variant_attributes')
+                        ->find($product->pivot->product_variant_id);
                     if ($variant && isset($variant->variant_attributes['size'])) {
                         $product->size = strtoupper($variant->variant_attributes['size']);
                     }
@@ -47,98 +71,119 @@ class OrdersController extends Controller
     public function checkout(Request $request)
     {
         Log::info('Checkout process started.');
-        $user = Auth::user();
+        $user = auth()->user();
+        $userId = $user->id;
 
-        $cartItems = Cart::where('user_id', $user->id)->with(['product', 'productVariant'])->get();
+        $cartItems = Cart::where('user_id', $userId)
+            ->with(['product:id,network', 'productVariant:id,price'])
+            ->select('id', 'product_id', 'product_variant_id', 'price', 'quantity', 'beneficiary_number')
+            ->get();
+        
         Log::info('Cart items fetched.', ['cartItemsCount' => $cartItems->count()]);
 
         if ($cartItems->isEmpty()) {
-            Log::warning('Cart is empty for user.', ['userId' => $user->id]);
+            Log::warning('Cart is empty for user.', ['userId' => $userId]);
             return redirect()->back()->with('error', 'Cart is empty');
         }
 
-        // Calculate total by summing the price of each cart item
-        $total = $cartItems->sum(function ($item) {
-            return (float) ($item->price ?? ($item->productVariant->price ?? 0));
-        });
+        $total = (float) $cartItems->sum(fn($item) => (float)($item->price ?? $item->productVariant?->price ?? 0));
         Log::info('Total calculated.', ['total' => $total, 'walletBalance' => $user->wallet_balance]);
 
-        // Check if user has enough wallet balance
         if ($user->wallet_balance < $total) {
-            Log::warning('Insufficient wallet balance.', ['userId' => $user->id, 'walletBalance' => $user->wallet_balance, 'total' => $total]);
+            Log::warning('Insufficient wallet balance.', ['userId' => $userId, 'walletBalance' => $user->wallet_balance, 'total' => $total]);
             return redirect()->back()->with('error', 'Insufficient wallet balance. Top up to proceed with the purchase.');
         }
 
-        Log::info('Creating separate orders for each cart item.', ['cartItemsCount' => $cartItems->count()]);
-
         DB::beginTransaction();
-        Log::info('Database transaction started.');
         try {
-            // Store balance before deduction
             $balanceBefore = $user->wallet_balance;
+            $newBalance = (float)bcsub((string)$user->wallet_balance, (string)$total, 2);
             
-            // Deduct wallet balance (use bcsub for decimal math and cast to float for decimal:2)
-            $user->wallet_balance = (float) bcsub((string) $user->wallet_balance, (string) $total, 2);
-            $user->save();
+            User::where('id', $userId)->update(['wallet_balance' => $newBalance]);
+            $user->wallet_balance = $newBalance;
             
-            $balanceAfter = $user->wallet_balance;
-            Log::info('Wallet balance deducted.', ['userId' => $user->id, 'newWalletBalance' => $user->wallet_balance]);
+            Log::info('Wallet balance deducted.', ['userId' => $userId, 'newBalance' => $newBalance]);
 
-            $createdOrders = [];
+            $orderData = [];
+            $transactionData = [];
+            $pivotInserts = [];
             $itemsProcessed = 0;
 
-            // Create separate order for each cart item
             foreach ($cartItems as $item) {
-                $itemTotal = (float) ($item->price ?? ($item->productVariant->price ?? 0));
+                $itemTotal = (float)($item->price ?? $item->productVariant?->price ?? 0);
                 $network = $item->product->network;
-
-                // Create the order for this item
-                $order = Order::create([
-                    'user_id' => $user->id,
+                
+                $orderData[] = [
+                    'user_id' => $userId,
                     'status' => strtolower($network) === 'ishare' ? 'completed' : 'pending',
                     'total' => $itemTotal,
                     'beneficiary_number' => $item->beneficiary_number,
                     'network' => $network,
-                ]);
-                Log::info('Order created for cart item.', ['orderId' => $order->id, 'network' => $network, 'total' => $itemTotal, 'beneficiaryNumber' => $item->beneficiary_number]);
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
 
-                // Attach the product to the order
-                $order->products()->attach($item->product_id, [
-                    'quantity' => (int) ($item->quantity ?? 1),
+            Order::insert($orderData);
+            
+            $createdOrders = Order::where('user_id', $userId)
+                ->orderByDesc('created_at')
+                ->limit($cartItems->count())
+                ->get();
+            
+            Log::info('Orders batch inserted.', ['count' => count($createdOrders)]);
+
+            foreach ($cartItems as $index => $item) {
+                $itemTotal = (float)($item->price ?? $item->productVariant?->price ?? 0);
+                $order = $createdOrders[$index];
+                
+                $pivotInserts[] = [
+                    'order_id' => $order->id,
+                    'product_id' => $item->product_id,
+                    'quantity' => (int)($item->quantity ?? 1),
                     'price' => $itemTotal,
                     'beneficiary_number' => $item->beneficiary_number,
                     'product_variant_id' => $item->product_variant_id,
-                ]);
-                Log::info('Product attached to order.', ['orderId' => $order->id, 'productId' => $item->product_id, 'beneficiaryNumber' => $item->beneficiary_number]);
-
-                // Create a transaction record for this order
-                $balanceBeforeItem = (float) bcsub((string) $balanceBefore, (string) $itemsProcessed, 2);
-                $balanceAfterItem = $balanceBeforeItem - $itemTotal;
-                $itemsProcessed = (float) bcadd((string) $itemsProcessed, (string) $itemTotal, 2);
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
                 
-                \App\Models\Transaction::create([
-                    'user_id' => $user->id,
+                $balanceBeforeItem = (float)bcsub((string)$balanceBefore, (string)$itemsProcessed, 2);
+                $itemsProcessed = (float)bcadd((string)$itemsProcessed, (string)$itemTotal, 2);
+                
+                // Add milliseconds to each transaction to ensure proper ordering
+                $transactionTime = now()->addMilliseconds($index * 10);
+                
+                $transactionData[] = [
+                    'user_id' => $userId,
                     'order_id' => $order->id,
                     'amount' => $itemTotal,
                     'balance_before' => $balanceBeforeItem,
-                    'balance_after' => $balanceAfterItem,
+                    'balance_after' => (float)bcsub((string)$balanceBeforeItem, (string)$itemTotal, 2),
                     'status' => 'completed',
                     'type' => 'order',
-                    'description' => 'Order placed for ' . $network . ' data/airtime.',
-                ]);
-                Log::info('Transaction created for order.', ['orderId' => $order->id, 'network' => $network]);
-
-                $createdOrders[] = $order;
+                    'description' => 'Order placed for ' . $item->product->network . ' data/airtime.',
+                    'created_at' => $transactionTime,
+                    'updated_at' => $transactionTime,
+                ];
             }
 
-            // Clear user's cart
-            Cart::where('user_id', $user->id)->delete();
-            Log::info('Cart cleared.', ['userId' => $user->id]);
+            if (!empty($pivotInserts)) {
+                DB::table('order_product')->insert($pivotInserts);
+                Log::info('Products batch attached.', ['count' => count($pivotInserts)]);
+            }
+
+            if (!empty($transactionData)) {
+                \App\Models\Transaction::insert($transactionData);
+                Log::info('Transactions batch inserted.', ['count' => count($transactionData)]);
+            }
+
+            Cart::where('user_id', $userId)->delete();
+            Log::info('Cart cleared.', ['userId' => $userId]);
 
             DB::commit();
             Log::info('Database transaction committed.');
 
-            // Push orders to external APIs based on network and individual service settings
             $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
@@ -150,49 +195,37 @@ class OrdersController extends Controller
                     $isMtnExpress = stripos($order->network, 'mtn express') !== false;
                     
                     if ($isMtnExpress && $datamasterEnabled) {
-                        // MTN Express goes to DataMaster
                         $mtnOrderPusher = new MtnExpressOrderPusherService();
                         $mtnOrderPusher->pushOrderToApi($order);
-                        Log::info('Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
+                        Log::info('Order pushed to DataMaster API', ['orderId' => $order->id]);
                     } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
-                        // Regular MTN goes to DataSource Order Pusher
                         $dataSourceOrderPusher = new DataSourceOrderPusherService();
                         $dataSourceOrderPusher->pushOrderToApi($order);
-                        Log::info('Order pushed to DataSource Order Pusher API', ['orderId' => $order->id, 'network' => $order->network]);
+                        Log::info('Order pushed to DataSource API', ['orderId' => $order->id]);
                     } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
-                        // MTN can also go to DataEasy if DataSource Pusher disabled
                         $dataEasyOrderPusher = new DataEasyOrderPusherService();
                         $dataEasyOrderPusher->pushOrderToApi($order);
-                        Log::info('Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
+                        Log::info('Order pushed to DataEasy API', ['orderId' => $order->id]);
                     } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
-                        // Other networks go to CodeCraft
                         $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                         $codeCraftOrderPusher->pushOrderToApi($order);
-                        Log::info('Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);
-                    } else {
-                        if ($isMtnExpress) {
-                            Log::info('Order pusher disabled for MTN Express', ['orderId' => $order->id, 'datamasterEnabled' => $datamasterEnabled]);
-                        } elseif ($isMtn) {
-                            Log::info('Order pusher disabled for DataSource', ['orderId' => $order->id, 'dataSourceEnabled' => $dataSourceEnabled, 'dataeasyEnabled' => $dataeasyEnabled]);
-                        } else {
-                            Log::info('Order pusher disabled for network', ['orderId' => $order->id, 'network' => $order->network, 'codecraftEnabled' => $codecraftEnabled]);
-                        }
+                        Log::info('Order pushed to CodeCraft API', ['orderId' => $order->id]);
                     }
                 } catch (\Exception $e) {
-                    Log::error('Failed to push order to external API', ['orderId' => $order->id, 'network' => $order->network, 'error' => $e->getMessage()]);
+                    Log::error('Failed to push order', ['orderId' => $order->id, 'error' => $e->getMessage()]);
                 }
             }
 
             $orderCount = count($createdOrders);
             $successMessage = $orderCount === 1 
                 ? 'Order placed successfully!' 
-                : "$orderCount orders placed successfully!";
+                : "{$orderCount} orders placed successfully!";
 
             return redirect()->route('dashboard.orders')->with('success', $successMessage);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Checkout failed during transaction.', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Checkout failed.', ['error' => $e->getMessage()]);
             return redirect()->back()->with('error', 'Checkout failed: ' . $e->getMessage());
         }
     }

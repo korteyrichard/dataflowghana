@@ -21,23 +21,27 @@ class TransactionsController extends Controller
             ->with('order')
             ->select('id', 'type', 'amount', 'balance_before', 'balance_after', 'description', 'created_at', 'order_id')
             ->latest()
-            ->paginate(15);
-
-        $allTimeSales = Transaction::where('user_id', $user->id)
-            ->where('type', 'order')
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $dailySales = Transaction::where('user_id', $user->id)
-            ->where('type', 'order')
-            ->where('status', 'completed')
-            ->whereDate('created_at', Carbon::today())
-            ->sum('amount');
+            ->get()
+            ->map(fn($t) => [
+                'id' => $t->id,
+                'type' => $t->type,
+                'amount' => $t->amount,
+                'balance_before' => $t->balance_before,
+                'balance_after' => $t->balance_after,
+                'description' => $t->description,
+                'created_at' => $t->created_at,
+                'order' => $t->order ? ['is_api_order' => $t->order->is_api_order] : null,
+            ])
+            ->values();
 
         return inertia('Dashboard/transactions', [
-            'transactions' => $transactions,
-            'allTimeSales' => $allTimeSales,
-            'dailySales' => $dailySales
+            'transactions' => [
+                'data' => $transactions,
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => count($transactions),
+                'total' => count($transactions),
+            ]
         ]);
     }
 

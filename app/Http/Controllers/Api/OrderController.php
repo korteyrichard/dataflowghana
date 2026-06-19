@@ -9,11 +9,12 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Services\CodeCraftOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use App\Services\DataSourceOrderPusherService;
-use Illuminate\Support\Facades\Log;
+use App\Models\Transaction;
 use App\Models\Setting;
 
 class OrderController extends Controller
@@ -37,6 +38,16 @@ class OrderController extends Controller
             'network_id' => 'required|integer',
             'size' => 'required|string'
         ]);
+
+        $existingOrder = Order::where('beneficiary_number', $request->beneficiary_number)
+            ->whereIn('status', ['pending', 'processing'])
+            ->first();
+        
+        if ($existingOrder) {
+            return response()->json([
+                'error' => 'An order with this beneficiary number already exists with pending or processing status'
+            ], 409);
+        }
 
         $user = auth()->user();
         
@@ -124,6 +135,18 @@ class OrderController extends Controller
                 'product_variant_id' => $variant->id
             ]);
             
+            // Create transaction record for API order
+            Transaction::create([
+                'user_id' => auth()->id(),
+                'order_id' => $order->id,
+                'amount' => $variant->price,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'status' => 'completed',
+                'type' => 'order',
+                'description' => 'Order placed for ' . $product->network . ' data/airtime.',
+            ]);
+            
             Log::info('Order processed successfully', [
                 'order_id' => $order->id,
                 'user_id' => $user->id,
@@ -144,27 +167,22 @@ class OrderController extends Controller
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
             
             if ($isMtnExpress && $datamasterEnabled) {
-                // MTN Express goes to DataMaster
                 $mtnOrderPusher = new MtnExpressOrderPusherService();
                 $mtnOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
             } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
-                // Regular MTN goes to DataSource Order Pusher
                 $dataSourceOrderPusher = new DataSourceOrderPusherService();
                 $dataSourceOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to DataSource Order Pusher API', ['orderId' => $order->id, 'network' => $order->network]);
             } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
-                // MTN can also go to DataEasy if DataSource Pusher disabled
                 $dataEasyOrderPusher = new DataEasyOrderPusherService();
                 $dataEasyOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
             } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
-                // Other networks go to CodeCraft
                 $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                 $codeCraftOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);
             } else {
-                // Order pusher is disabled for this network
                 $order->update(['api_status' => 'disabled']);
                 Log::info('Order pusher disabled for network - skipping API call', ['orderId' => $order->id, 'network' => $order->network]);
             }

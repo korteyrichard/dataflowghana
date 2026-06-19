@@ -29,18 +29,28 @@ class AdminDashboardController extends Controller
         $todayUsersCount = User::whereDate('created_at', $today)->count();
         $todayOrdersCount = Order::whereDate('created_at', $today)->count();
 
-        // Get past 30 days sales data
-        $past30Days = [];
-        for ($i = 29; $i >= 0; $i--) {
-            $date = now()->subDays($i)->format('Y-m-d');
-            $sales = Order::whereDate('created_at', $date)
-                ->sum('total');
-            $past30Days[] = [
-                'date' => now()->subDays($i)->format('M d'),
-                'fullDate' => $date,
-                'sales' => (float) $sales,
+        // Get past 30 days sales data using raw query for performance
+        $past30Days = DB::select(
+            'SELECT DATE_FORMAT(DATE_SUB(DATE(?), INTERVAL 29 - a.x DAY), "%Y-%m-%d") as date, '
+            . 'DATE_FORMAT(DATE_SUB(DATE(?), INTERVAL 29 - a.x DAY), "%b %d") as formatted_date, '
+            . 'COALESCE(SUM(o.total), 0) as sales '
+            . 'FROM (SELECT 0 as x UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 '
+            . 'UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9 UNION SELECT 10 UNION SELECT 11 '
+            . 'UNION SELECT 12 UNION SELECT 13 UNION SELECT 14 UNION SELECT 15 UNION SELECT 16 UNION SELECT 17 '
+            . 'UNION SELECT 18 UNION SELECT 19 UNION SELECT 20 UNION SELECT 21 UNION SELECT 22 UNION SELECT 23 '
+            . 'UNION SELECT 24 UNION SELECT 25 UNION SELECT 26 UNION SELECT 27 UNION SELECT 28 UNION SELECT 29) a '
+            . 'LEFT JOIN orders o ON DATE(o.created_at) = DATE_SUB(DATE(?), INTERVAL 29 - a.x DAY) '
+            . 'GROUP BY a.x ORDER BY a.x ASC',
+            [now(), now(), now()]
+        );
+        
+        $past30DaysFormatted = array_map(function($row) {
+            return [
+                'date' => $row->formatted_date,
+                'fullDate' => $row->date,
+                'sales' => (float) $row->sales,
             ];
-        }
+        }, $past30Days);
 
         return Inertia::render('Admin/Dashboard', [
             'usersCount' => $usersCount,
@@ -48,7 +58,7 @@ class AdminDashboardController extends Controller
             'ordersCount' => $ordersCount,
             'todayUsersCount' => $todayUsersCount,
             'todayOrdersCount' => $todayOrdersCount,
-            'past30DaysSales' => $past30Days,
+            'past30DaysSales' => $past30DaysFormatted,
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
             'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
@@ -62,41 +72,49 @@ class AdminDashboardController extends Controller
      */
     public function users(Request $request)
     {
-        $users = User::query();
+        $query = User::query();
 
-        // Search by email
-        if ($request->has('email') && $request->input('email') !== '') {
-            $users->where('email', 'like', '%' . $request->input('email') . '%');
+        if ($request->filled('email')) {
+            $query->where('email', 'like', '%' . $request->input('email') . '%');
         }
 
-        // Search by phone
-        if ($request->has('phone') && $request->input('phone') !== '') {
-            $users->where('phone', 'like', '%' . $request->input('phone') . '%');
+        if ($request->filled('phone')) {
+            $query->where('phone', 'like', '%' . $request->input('phone') . '%');
         }
 
-        // Filter by role
-        if ($request->has('role') && $request->input('role') !== '') {
-            $users->where('role', $request->input('role'));
+        if ($request->filled('role')) {
+            $query->where('role', $request->input('role'));
         }
 
-        // Get user statistics
-        $totalUsers = User::count();
-        $customerCount = User::where('role', 'customer')->count();
-        $agentCount = User::where('role', 'agent')->count();
-        $adminCount = User::where('role', 'admin')->count();
-        $totalWalletBalance = User::sum('wallet_balance');
+        // Get stats in one query
+        $stats = DB::selectOne(
+            'SELECT COUNT(*) as total, '
+            . 'SUM(CASE WHEN role = ? THEN 1 ELSE 0 END) as customers, '
+            . 'SUM(CASE WHEN role = ? THEN 1 ELSE 0 END) as agents, '
+            . 'SUM(CASE WHEN role = ? THEN 1 ELSE 0 END) as admins, '
+            . 'COALESCE(SUM(wallet_balance), 0) as total_wallet '
+            . 'FROM users',
+            ['customer', 'agent', 'admin']
+        );
+
+        // Calculate today's wallet topup (sum of admin_credit, topup, and wallet_topup)
+        $todaysTopup = Transaction::whereDate('created_at', today())
+            ->where('status', 'completed')
+            ->whereIn('type', ['admin_credit', 'topup', 'wallet_topup'])
+            ->sum('amount');
 
         return Inertia::render('Admin/Users', [
-            'users' => $users->select('id', 'name', 'email', 'phone', 'role', 'wallet_balance', 'created_at', 'updated_at')->paginate(15),
+            'users' => $query->select('id', 'name', 'email', 'phone', 'role', 'wallet_balance', 'created_at', 'updated_at')->paginate(15),
             'filterEmail' => $request->input('email', ''),
             'filterPhone' => $request->input('phone', ''),
             'filterRole' => $request->input('role', ''),
             'userStats' => [
-                'total' => $totalUsers,
-                'customers' => $customerCount,
-                'agents' => $agentCount,
-                'admins' => $adminCount,
-                'totalWalletBalance' => $totalWalletBalance,
+                'total' => $stats->total,
+                'customers' => $stats->customers,
+                'agents' => $stats->agents,
+                'admins' => $stats->admins,
+                'totalWalletBalance' => $stats->total_wallet,
+                'todaysTopup' => $todaysTopup,
             ],
         ]);
     }
@@ -138,44 +156,41 @@ class AdminDashboardController extends Controller
      */
     public function orders(Request $request)
     {
-        $orders = Order::with(['products' => function($query) {
-            $query->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id');
-        }, 'user'])->select('*')->latest();
+        $query = Order::with([
+            'products' => function($q) { $q->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id'); },
+            'user:id,name,email'
+        ])->select('id', 'user_id', 'network', 'status', 'api_status', 'total', 'created_at')->latest();
 
-        if ($request->has('network') && $request->input('network') !== '') {
-            $orders->where('network', 'like', '%' . $request->input('network') . '%');
+        if ($request->filled('network')) {
+            $query->where('network', 'like', '%' . $request->input('network') . '%');
         }
 
-        if ($request->has('status') && $request->input('status') !== '') {
-            $orders->where('status', $request->input('status'));
+        if ($request->filled('status')) {
+            $query->where('status', $request->input('status'));
         }
 
-        // Search by order ID
-        if ($request->has('order_id') && $request->input('order_id') !== '') {
-            $orders->where('id', 'like', '%' . $request->input('order_id') . '%');
+        if ($request->filled('order_id')) {
+            $query->where('id', 'like', '%' . $request->input('order_id') . '%');
         }
 
-        // Search by beneficiary number
-        if ($request->has('beneficiary_number') && $request->input('beneficiary_number') !== '') {
-            $orders->whereHas('products', function($productQuery) use ($request) {
-                $productQuery->where('order_product.beneficiary_number', 'like', '%' . $request->input('beneficiary_number') . '%');
+        if ($request->filled('beneficiary_number')) {
+            $query->whereHas('products', function($q) use ($request) {
+                $q->where('order_product.beneficiary_number', 'like', '%' . $request->input('beneficiary_number') . '%');
             });
         }
 
-        // Search by username
-        if ($request->has('username') && $request->input('username') !== '') {
-            $orders->whereHas('user', function($userQuery) use ($request) {
-                $userQuery->where('name', $request->input('username'));
+        if ($request->filled('username')) {
+            $query->whereHas('user', function($q) use ($request) {
+                $q->where('name', 'like', '%' . $request->input('username') . '%');
             });
         }
 
-        $paginatedOrders = $orders->paginate(50);
+        $paginatedOrders = $query->paginate(50);
         
-        // Transform orders to include variant information
         $paginatedOrders->getCollection()->transform(function($order) {
             $order->products = $order->products->map(function($product) {
                 if ($product->pivot->product_variant_id) {
-                    $variant = \App\Models\ProductVariant::find($product->pivot->product_variant_id);
+                    $variant = \App\Models\ProductVariant::select('variant_attributes')->find($product->pivot->product_variant_id);
                     if ($variant && isset($variant->variant_attributes['size'])) {
                         $product->size = strtoupper($variant->variant_attributes['size']);
                     }
@@ -186,9 +201,9 @@ class AdminDashboardController extends Controller
         });
 
         $dailyTotalSales = Order::whereDate('created_at', today())->sum('total');
-        
-        // Get all unique networks from all orders
-        $allNetworks = Order::distinct()->pluck('network')->filter()->sort()->values();
+        $allNetworks = Order::select('network')->distinct()->where('network', '!=', null)->orderBy('network')->pluck('network');
+        $pendingOrdersCount = Order::where('status', 'pending')->count();
+        $processingOrdersCount = Order::where('status', 'processing')->count();
 
         return Inertia::render('Admin/Orders', [
             'orders' => $paginatedOrders,
@@ -199,6 +214,8 @@ class AdminDashboardController extends Controller
             'searchBeneficiaryNumber' => $request->input('beneficiary_number', ''),
             'searchUsername' => $request->input('username', ''),
             'dailyTotalSales' => $dailyTotalSales,
+            'pendingOrdersCount' => $pendingOrdersCount,
+            'processingOrdersCount' => $processingOrdersCount,
         ]);
     }
 
@@ -333,17 +350,17 @@ class AdminDashboardController extends Controller
      */
     public function transactions(Request $request)
     {
-        $transactions = Transaction::with('user', 'admin', 'order.user')
+        $query = Transaction::with('user:id,name', 'admin:id,name', 'order:id')
             ->where('status', 'completed')
             ->select('id', 'user_id', 'admin_id', 'order_id', 'amount', 'balance_before', 'balance_after', 'status', 'type', 'description', 'created_at')
             ->latest();
 
-        if ($request->has('type') && $request->input('type') !== '') {
-            $transactions->where('type', $request->input('type'));
+        if ($request->filled('type')) {
+            $query->where('type', $request->input('type'));
         }
 
         return Inertia::render('Admin/Transactions', [
-            'transactions' => $transactions->paginate(15),
+            'transactions' => $query->paginate(15),
             'filterType' => $request->input('type', ''),
         ]);
     }
@@ -357,7 +374,7 @@ class AdminDashboardController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role' => 'required|string|in:customer,agent,admin,dealer,elite',
+            'role' => 'required|string|in:customer,agent,admin,dealer,elite,superAgent',
         ]);
 
         User::create([
@@ -375,15 +392,17 @@ class AdminDashboardController extends Controller
      */
     public function updateUserRole(Request $request, User $user)
     {
+        \Log::info('Update role request', ['role' => $request->role, 'user_id' => $user->id]);
+        
         $request->validate([
-            'role' => 'required|string|in:customer,agent,admin,dealer,elite',
+            'role' => 'required|string|in:customer,agent,admin,dealer,elite,superAgent',
         ]);
 
-        $user->update([
-            'role' => $request->role,
-        ]);
+        $user->role = $request->role;
+        \Log::info('User role set', ['role' => $user->role, 'type' => gettype($user->role)]);
+        $user->save();
 
-        return redirect()->route('admin.users');
+        return redirect()->back()->with('success', 'User role updated successfully.');
     }
 
     /**
@@ -488,7 +507,7 @@ class AdminDashboardController extends Controller
                 'network' => 'required|in:MTN,Telecel,Ishare,Bigtime',
                 'description' => 'required|string|max:255',
                 'expiry' => 'required|in:non expiry,30 days,24 hours',
-                'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
+                'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product,super_agent_product',
                 'status' => 'required|in:IN STOCK,OUT OF STOCK',
                 'variants' => 'required|array|min:1',
                 'variants.*.price' => 'required|numeric|min:0',
@@ -562,7 +581,7 @@ class AdminDashboardController extends Controller
             'network' => 'required|in:MTN,Telecel,Ishare,Bigtime',
             'description' => 'required|string|max:255',
             'expiry' => 'required|in:non expiry,30 days,24 hours',
-            'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product',
+            'product_type' => 'required|in:agent_product,customer_product,dealer_product,elite_product,super_agent_product',
             'status' => 'required|in:IN STOCK,OUT OF STOCK',
             'variants' => 'required|array|min:1',
             'variants.*.price' => 'required|numeric|min:0',
@@ -643,9 +662,24 @@ class AdminDashboardController extends Controller
             ->latest()
             ->paginate(15);
 
+        // Calculate totals for all transactions (not just current page)
+        $allTransactions = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->get();
+        
+        $totalTopupAmount = $allTransactions->where('type', 'wallet_topup')->sum('amount') +
+                          $allTransactions->where('type', 'topup')->sum('amount') +
+                          $allTransactions->where('type', 'admin_credit')->sum('amount');
+        
+        $totalOrderAmount = $allTransactions->where('type', 'order')->sum('amount');
+        $totalRefundAmount = $allTransactions->where('type', 'refund')->sum('amount');
+
         return Inertia::render('Admin/UserTransactions', [
             'user' => $user,
             'transactions' => $transactions,
+            'totalTopupAmount' => $totalTopupAmount,
+            'totalOrderAmount' => $totalOrderAmount,
+            'totalRefundAmount' => $totalRefundAmount,
         ]);
     }
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,17 +24,22 @@ interface EditRoleDialogProps {
 }
 
 const EditRoleDialog: React.FC<EditRoleDialogProps> = ({ user }) => {
+  const [open, setOpen] = useState(false);
   const { data, setData, put, processing, errors } = useForm({
     role: user.role,
   });
 
   const submit = (e:any) => {
     e.preventDefault();
-    put(route("admin.users.updateRole", { user: user.id }));
+    put(route("admin.users.updateRole", { user: user.id }), {
+      onSuccess: () => {
+        setOpen(false);
+      },
+    });
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
           Change Role
@@ -63,6 +68,7 @@ const EditRoleDialog: React.FC<EditRoleDialogProps> = ({ user }) => {
                 <option value="agent">Agent</option>
                 <option value="dealer">Dealer</option>
                 <option value="elite">Elite</option>
+                <option value="superAgent">Super Agent</option>
                 <option value="admin">Admin</option>
               </select>
             </div>

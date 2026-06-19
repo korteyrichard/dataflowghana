@@ -30,6 +30,12 @@ export default function Cart() {
     router.delete(route('remove.from.cart', cartId));
   };
 
+  const handleClearAll = () => {
+    if (confirm('Are you sure you want to clear all items from your cart?')) {
+      router.post(route('clear.cart'));
+    }
+  };
+
   const total = cartItems.reduce((sum, item) => sum + Number(item.product?.price || 0), 0);
 
   return (
@@ -208,6 +214,15 @@ export default function Cart() {
                         >
                           <Icon name="Plus" className="w-4 h-4 mr-2" />
                           Add More Items
+                        </Button>
+
+                        <Button 
+                          variant="destructive" 
+                          onClick={handleClearAll}
+                          className="w-full sm:w-auto px-6 py-3 rounded-xl transition-colors duration-200"
+                        >
+                          <Icon name="Trash2" className="w-4 h-4 mr-2" />
+                          Clear Cart
                         </Button>
                         
                         <Button 
