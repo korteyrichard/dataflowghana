@@ -55,6 +55,12 @@ class AFAController extends Controller
         }
 
         DB::transaction(function() use ($request, $afaProduct) {
+            $user = \App\Models\User::lockForUpdate()->find(auth()->id());
+
+            if ($user->wallet_balance < $afaProduct->price) {
+                throw new \Exception('Insufficient funds');
+            }
+
             AFAOrders::create([
                 'user_id' => auth()->id(),
                 'afa_product_id' => $request->afa_product_id,
@@ -67,7 +73,7 @@ class AFAController extends Controller
                 'status' => 'PENDING'
             ]);
 
-            auth()->user()->decrement('wallet_balance', $afaProduct->price);
+            $user->decrement('wallet_balance', $afaProduct->price);
         });
 
         return redirect()->route('dashboard.afa')->with('success', 'AFA order created successfully!');

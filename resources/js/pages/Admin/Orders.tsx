@@ -54,6 +54,8 @@ interface AdminOrdersPageProps {
   searchOrderId: string;
   searchBeneficiaryNumber: string;
   searchUsername: string;
+  searchEmail: string;
+  filterDate: string;
   dailyTotalSales: number;
   allNetworks: string[];
   pendingOrdersCount: number;
@@ -70,6 +72,8 @@ export default function AdminOrders() {
     searchOrderId: initialSearchOrderId,
     searchBeneficiaryNumber: initialSearchBeneficiaryNumber,
     searchUsername: initialSearchUsername,
+    searchEmail: initialSearchEmail,
+    filterDate: initialFilterDate,
     dailyTotalSales,
     allNetworks,
     pendingOrdersCount,
@@ -82,6 +86,8 @@ export default function AdminOrders() {
   const [searchOrderId, setSearchOrderId] = useState(initialSearchOrderId);
   const [searchBeneficiaryNumber, setSearchBeneficiaryNumber] = useState(initialSearchBeneficiaryNumber);
   const [searchUsername, setSearchUsername] = useState(initialSearchUsername);
+  const [searchEmail, setSearchEmail] = useState(initialSearchEmail);
+  const [dateFilter, setDateFilter] = useState(initialFilterDate);
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [bulkStatus, setBulkStatus] = useState('');
 
@@ -96,18 +102,24 @@ export default function AdminOrders() {
     const orderId = filterName === 'order_id' ? value : searchOrderId;
     const beneficiaryNumber = filterName === 'beneficiary_number' ? value : searchBeneficiaryNumber;
     const username = filterName === 'username' ? value : searchUsername;
+    const email = filterName === 'email' ? value : searchEmail;
+    const date = filterName === 'date' ? value : dateFilter;
     
     if (network) newFilters.network = network;
     if (status) newFilters.status = status;
     if (orderId) newFilters.order_id = orderId;
     if (beneficiaryNumber) newFilters.beneficiary_number = beneficiaryNumber;
     if (username) newFilters.username = username;
+    if (email) newFilters.email = email;
+    if (date) newFilters.date = date;
     
     setNetworkFilter(network);
     setStatusFilter(status);
     setSearchOrderId(orderId);
     setSearchBeneficiaryNumber(beneficiaryNumber);
     setSearchUsername(username);
+    setSearchEmail(email);
+    setDateFilter(date);
     router.get(route('admin.orders'), newFilters, { preserveState: true, replace: true });
   };
 
@@ -265,7 +277,7 @@ export default function AdminOrders() {
         )}
 
         {/* Search and Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 mb-8">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Order ID</label>
             <input
@@ -289,13 +301,24 @@ export default function AdminOrders() {
           </div>
           
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Beneficiary Number</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Number</label>
             <input
               type="text"
               placeholder="Enter beneficiary number..."
               className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
               value={searchBeneficiaryNumber}
               onChange={(e) => handleFilterChange('beneficiary_number', e.target.value)}
+            />
+          </div>
+          
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Email</label>
+            <input
+              type="text"
+              placeholder="Enter email..."
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={searchEmail}
+              onChange={(e) => handleFilterChange('email', e.target.value)}
             />
           </div>
           
@@ -311,6 +334,16 @@ export default function AdminOrders() {
                 <option key={network} value={network}>{network}</option>
               ))}
             </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Date</label>
+            <input
+              type="date"
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={dateFilter}
+              onChange={(e) => handleFilterChange('date', e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1">

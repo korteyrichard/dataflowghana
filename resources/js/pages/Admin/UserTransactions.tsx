@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { AdminLayout } from "../../layouts/admin-layout";
 import { Button } from "@/components/ui/button";
 import { PageProps, User, Transaction } from '@/types';
 import { ArrowLeft, Calendar, DollarSign, FileText, ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
+import Pagination from '@/components/pagination';
 
 interface UserTransactionsPageProps extends PageProps {
   user: User;
@@ -13,10 +14,18 @@ interface UserTransactionsPageProps extends PageProps {
     last_page: number;
     per_page: number;
     total: number;
+    from: number;
+    to: number;
+    links: Array<{
+      url: string | null;
+      label: string;
+      active: boolean;
+    }>;
   };
   totalTopupAmount: number;
   totalOrderAmount: number;
   totalRefundAmount: number;
+  filterType: string;
 }
 
 const formatBalance = (balance: number | null | undefined): string => {
@@ -27,9 +36,20 @@ const formatBalance = (balance: number | null | undefined): string => {
   return isNaN(num) ? '-' : `₵${num.toFixed(2)}`;
 };
 
-const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, totalOrderAmount, totalRefundAmount }: UserTransactionsPageProps) => {
+const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, totalOrderAmount, totalRefundAmount, filterType }: UserTransactionsPageProps) => {
   const transactionData = transactions.data || [];
   const totalTransactionCount = transactions.total;
+  const [typeFilter, setTypeFilter] = useState(filterType);
+
+  const handleTypeFilter = (value: string) => {
+    setTypeFilter(value);
+    const params: Record<string, string> = {};
+    if (value) params.type = value;
+    router.get(route('admin.users.transactions', user.id), params, {
+      preserveState: true,
+      replace: true,
+    });
+  };
   const getStatusBadge = (status: string) => {
     const statusClasses = {
       completed: "bg-green-100 text-green-800",
@@ -51,6 +71,8 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
       wallet_topup: "bg-blue-100 text-blue-800",
       topup: "bg-blue-100 text-blue-800",
       order_payment: "bg-purple-100 text-purple-800",
+      order: "bg-purple-100 text-purple-800",
+      bulk_order: "bg-indigo-100 text-indigo-800",
       agent_fee: "bg-orange-100 text-orange-800",
       refund: "bg-green-100 text-green-800",
       admin_credit: "bg-emerald-100 text-emerald-800",
@@ -152,8 +174,25 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
 
       {/* Transactions Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h3 className="text-lg font-medium text-gray-900">Transaction History</h3>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Type:</label>
+            <select
+              value={typeFilter}
+              onChange={(e) => handleTypeFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            >
+              <option value="">All Types</option>
+              <option value="wallet_topup">Wallet Topup</option>
+              <option value="topup">Topup</option>
+              <option value="order">Order</option>
+              <option value="bulk_order">Bulk Order</option>
+              <option value="refund">Refund</option>
+              <option value="admin_credit">Admin Credit</option>
+              <option value="admin_debit">Admin Debit</option>
+            </select>
+          </div>
         </div>
         
         {transactionData.length > 0 ? (
@@ -237,33 +276,9 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
         )}
         
         {/* Pagination */}
-        {transactions.last_page > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <div className="text-sm text-gray-700">
-              Showing page {transactions.current_page} of {transactions.last_page} ({transactions.total} total transactions)
-            </div>
-            <div className="flex items-center gap-2">
-              {transactions.current_page > 1 && (
-                <Link 
-                  href={route('admin.users.transactions', { user: user.id, page: transactions.current_page - 1 })}
-                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  Previous
-                </Link>
-              )}
-              {transactions.current_page < transactions.last_page && (
-                <Link 
-                  href={route('admin.users.transactions', { user: user.id, page: transactions.current_page + 1 })}
-                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
+        <div className="px-6 py-4 border-t border-gray-200">
+          <Pagination data={transactions} />
+        </div>
       </div>
     </AdminLayout>
   );

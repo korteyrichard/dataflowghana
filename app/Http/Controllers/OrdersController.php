@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Services\CodeCraftOrderPusherService;
+use App\Services\CodeCraftMtnOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use App\Services\DataSourceOrderPusherService;
@@ -96,8 +97,22 @@ class OrdersController extends Controller
 
         DB::beginTransaction();
         try {
+            // Lock user row and re-check balance to prevent race conditions
+            $user = User::lockForUpdate()->find($userId);
+
+            if ($user->wallet_balance < $total) {
+                DB::rollBack();
+                Log::warning('Insufficient wallet balance after lock.', ['userId' => $userId, 'walletBalance' => $user->wallet_balance, 'total' => $total]);
+                return redirect()->back()->with('error', 'Insufficient wallet balance. Top up to proceed with the purchase.');
+            }
+
             $balanceBefore = $user->wallet_balance;
             $newBalance = (float)bcsub((string)$user->wallet_balance, (string)$total, 2);
+
+            if ($newBalance < 0) {
+                DB::rollBack();
+                return redirect()->back()->with('error', 'Insufficient wallet balance. Top up to proceed with the purchase.');
+            }
             
             User::where('id', $userId)->update(['wallet_balance' => $newBalance]);
             $user->wallet_balance = $newBalance;
@@ -188,6 +203,7 @@ class OrdersController extends Controller
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
+            $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
             
             foreach ($createdOrders as $order) {
                 try {
@@ -198,6 +214,10 @@ class OrdersController extends Controller
                         $mtnOrderPusher = new MtnExpressOrderPusherService();
                         $mtnOrderPusher->pushOrderToApi($order);
                         Log::info('Order pushed to DataMaster API', ['orderId' => $order->id]);
+                    } elseif ($isMtn && !$isMtnExpress && $codecraftMtnEnabled) {
+                        $codecraftMtnPusher = new CodeCraftMtnOrderPusherService();
+                        $codecraftMtnPusher->pushOrderToApi($order);
+                        Log::info('Order pushed to CodeCraft MTN API', ['orderId' => $order->id]);
                     } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
                         $dataSourceOrderPusher = new DataSourceOrderPusherService();
                         $dataSourceOrderPusher->pushOrderToApi($order);

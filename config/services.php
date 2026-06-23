@@ -61,4 +61,9 @@ return [
         'secret_key' => env('DATASOURCE_SECRET_KEY'),
     ],
 
+    'codecraft_mtn' => [
+        'api_key' => env('CODECRAFT_MTN_API_KEY') ?: env('CODE_CRAFTER_API_KEY', ''),
+        'client_email' => env('CODE_CRAFTER_CLIENT_EMAIL', ''),
+    ],
+
 ];

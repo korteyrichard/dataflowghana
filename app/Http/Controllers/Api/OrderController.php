@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\CodeCraftOrderPusherService;
+use App\Services\CodeCraftMtnOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use App\Services\DataSourceOrderPusherService;
@@ -165,11 +166,16 @@ class OrderController extends Controller
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
+            $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
             
             if ($isMtnExpress && $datamasterEnabled) {
                 $mtnOrderPusher = new MtnExpressOrderPusherService();
                 $mtnOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif ($isMtn && !$isMtnExpress && $codecraftMtnEnabled) {
+                $codecraftMtnPusher = new CodeCraftMtnOrderPusherService();
+                $codecraftMtnPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to CodeCraft MTN API', ['orderId' => $order->id, 'network' => $order->network]);
             } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
                 $dataSourceOrderPusher = new DataSourceOrderPusherService();
                 $dataSourceOrderPusher->pushOrderToApi($order);

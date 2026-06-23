@@ -37,6 +37,7 @@ interface PaginatedUsers {
 
 interface UsersPageProps extends PageProps {
   users: PaginatedUsers;
+  filterUsername: string;
   filterEmail: string;
   filterPhone: string;
   filterRole: string;
@@ -50,13 +51,15 @@ interface UsersPageProps extends PageProps {
   };
 }
 
-const UsersPage = ({ auth, users, filterEmail, filterPhone, filterRole, userStats }: UsersPageProps) => {
+const UsersPage = ({ auth, users, filterUsername, filterEmail, filterPhone, filterRole, userStats }: UsersPageProps) => {
+  const [searchUsername, setSearchUsername] = useState(filterUsername);
   const [searchEmail, setSearchEmail] = useState(filterEmail);
   const [searchPhone, setSearchPhone] = useState(filterPhone);
   const [selectedRole, setSelectedRole] = useState(filterRole);
 
   const handleSearch = () => {
     const params: Record<string, string> = {};
+    if (searchUsername) params.username = searchUsername;
     if (searchEmail) params.email = searchEmail;
     if (searchPhone) params.phone = searchPhone;
     if (selectedRole) params.role = selectedRole;
@@ -68,6 +71,7 @@ const UsersPage = ({ auth, users, filterEmail, filterPhone, filterRole, userStat
   };
 
   const handleReset = () => {
+    setSearchUsername('');
     setSearchEmail('');
     setSearchPhone('');
     setSelectedRole('');
@@ -155,7 +159,22 @@ const UsersPage = ({ auth, users, filterEmail, filterPhone, filterRole, userStat
 
       {/* Search and Filter Section */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search by Username</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
+              <Input
+                type="text"
+                placeholder="Enter username..."
+                value={searchUsername}
+                onChange={(e) => setSearchUsername(e.target.value)}
+                className="pl-10"
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search by Email</label>
             <div className="relative">

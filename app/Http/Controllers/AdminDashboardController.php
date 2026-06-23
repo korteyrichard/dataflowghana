@@ -64,6 +64,7 @@ class AdminDashboardController extends Controller
             'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
             'dataeasyOrderPusherEnabled' => (bool) Setting::get('dataeasy_order_pusher_enabled', 0),
             'dataSourceOrderPusherEnabled' => (bool) Setting::get('datasource_order_pusher_enabled', 1),
+            'codecraftMtnOrderPusherEnabled' => (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0),
         ]);
     }
 
@@ -73,6 +74,10 @@ class AdminDashboardController extends Controller
     public function users(Request $request)
     {
         $query = User::query();
+
+        if ($request->filled('username')) {
+            $query->where('name', 'like', '%' . $request->input('username') . '%');
+        }
 
         if ($request->filled('email')) {
             $query->where('email', 'like', '%' . $request->input('email') . '%');
@@ -104,7 +109,8 @@ class AdminDashboardController extends Controller
             ->sum('amount');
 
         return Inertia::render('Admin/Users', [
-            'users' => $query->select('id', 'name', 'email', 'phone', 'role', 'wallet_balance', 'created_at', 'updated_at')->paginate(15),
+            'users' => $query->select('id', 'name', 'email', 'phone', 'role', 'wallet_balance', 'created_at', 'updated_at')->paginate(15)->appends($request->query()),
+            'filterUsername' => $request->input('username', ''),
             'filterEmail' => $request->input('email', ''),
             'filterPhone' => $request->input('phone', ''),
             'filterRole' => $request->input('role', ''),
@@ -185,7 +191,17 @@ class AdminDashboardController extends Controller
             });
         }
 
-        $paginatedOrders = $query->paginate(50);
+        if ($request->filled('email')) {
+            $query->whereHas('user', function($q) use ($request) {
+                $q->where('email', 'like', '%' . $request->input('email') . '%');
+            });
+        }
+
+        if ($request->filled('date')) {
+            $query->whereDate('created_at', $request->input('date'));
+        }
+
+        $paginatedOrders = $query->paginate(50)->appends($request->query());
         
         $paginatedOrders->getCollection()->transform(function($order) {
             $order->products = $order->products->map(function($product) {
@@ -213,6 +229,8 @@ class AdminDashboardController extends Controller
             'searchOrderId' => $request->input('order_id', ''),
             'searchBeneficiaryNumber' => $request->input('beneficiary_number', ''),
             'searchUsername' => $request->input('username', ''),
+            'searchEmail' => $request->input('email', ''),
+            'filterDate' => $request->input('date', ''),
             'dailyTotalSales' => $dailyTotalSales,
             'pendingOrdersCount' => $pendingOrdersCount,
             'processingOrdersCount' => $processingOrdersCount,
@@ -653,14 +671,19 @@ class AdminDashboardController extends Controller
     /**
      * Display user transaction history.
      */
-    public function userTransactions(User $user)
+    public function userTransactions(Request $request, User $user)
     {
-        $transactions = Transaction::where('user_id', $user->id)
+        $query = Transaction::where('user_id', $user->id)
             ->where('status', 'completed')
             ->with('order', 'admin')
             ->select('id', 'user_id', 'admin_id', 'order_id', 'amount', 'balance_before', 'balance_after', 'status', 'type', 'description', 'created_at')
-            ->latest()
-            ->paginate(15);
+            ->latest();
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->input('type'));
+        }
+
+        $transactions = $query->paginate(15)->appends($request->query());
 
         // Calculate totals for all transactions (not just current page)
         $allTransactions = Transaction::where('user_id', $user->id)
@@ -680,6 +703,7 @@ class AdminDashboardController extends Controller
             'totalTopupAmount' => $totalTopupAmount,
             'totalOrderAmount' => $totalOrderAmount,
             'totalRefundAmount' => $totalRefundAmount,
+            'filterType' => $request->input('type', ''),
         ]);
     }
 
@@ -865,5 +889,17 @@ class AdminDashboardController extends Controller
         
         $status = $enabled ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "DataSource order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle CodeCraft MTN order pusher functionality.
+     */
+    public function toggleCodecraftMtnOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('codecraft_mtn_order_pusher_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "CodeCraft MTN order pusher {$status} successfully.");
     }
 }

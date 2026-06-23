@@ -7,6 +7,7 @@ use App\Services\MoolreSmsService;
 use App\Services\DataMasterOrderStatusSyncService;
 use App\Services\DataEasyStatusSyncService;
 use App\Services\DataSourceOrderStatusSyncService;
+use App\Services\CodeCraftMtnOrderStatusSyncService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -35,6 +36,10 @@ class OrderStatusSyncService
         // Sync DataSource orders (Order Pusher)
         $dataSourceSync = new DataSourceOrderStatusSyncService();
         $dataSourceSync->syncOrderStatuses();
+        
+        // Sync CodeCraft MTN orders
+        $codecraftMtnSync = new CodeCraftMtnOrderStatusSyncService();
+        $codecraftMtnSync->syncOrderStatuses();
         
         foreach ($processingOrders as $order) {
             try {
