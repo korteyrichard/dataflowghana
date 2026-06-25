@@ -141,10 +141,13 @@ class OrdersController extends Controller
 
             Order::insert($orderData);
             
+            // Fetch in ascending ID order to match the insertion order of cart items
             $createdOrders = Order::where('user_id', $userId)
-                ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->limit($cartItems->count())
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
             
             Log::info('Orders batch inserted.', ['count' => count($createdOrders)]);
 

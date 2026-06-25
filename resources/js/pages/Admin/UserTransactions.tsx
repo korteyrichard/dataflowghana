@@ -5,6 +5,15 @@ import { PageProps, User, Transaction } from '@/types';
 import { ArrowLeft, Calendar, DollarSign, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link, router } from '@inertiajs/react';
 import Pagination from '@/components/pagination';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
 interface UserTransactionsPageProps extends PageProps {
   user: User;
@@ -25,6 +34,8 @@ interface UserTransactionsPageProps extends PageProps {
   totalTopupAmount: number;
   totalOrderAmount: number;
   totalRefundAmount: number;
+  todaysOrderAmount: number;
+  past7DaysSales: Array<{ date: string; fullDate: string; sales: number }>;
   filterType: string;
 }
 
@@ -36,7 +47,22 @@ const formatBalance = (balance: number | null | undefined): string => {
   return isNaN(num) ? '-' : `₵${num.toFixed(2)}`;
 };
 
-const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, totalOrderAmount, totalRefundAmount, filterType }: UserTransactionsPageProps) => {
+const SalesTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload[0]) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+        <p className="text-sm font-medium text-gray-900 dark:text-white">{data.date}</p>
+        <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+          GHC {data.sales.toLocaleString()}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, totalOrderAmount, totalRefundAmount, todaysOrderAmount, past7DaysSales, filterType }: UserTransactionsPageProps) => {
   const transactionData = transactions.data || [];
   const totalTransactionCount = transactions.total;
   const [typeFilter, setTypeFilter] = useState(filterType);
@@ -130,7 +156,7 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
       </div>
 
       {/* Transaction Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Total Transactions</h3>
@@ -170,7 +196,40 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
           </div>
           <p className="text-2xl font-bold text-green-900 dark:text-green-300">₵{totalRefundAmount.toFixed(2)}</p>
         </div>
+        
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-orange-200 dark:bg-gray-800 dark:border-orange-700/50">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wide">Today's Orders</h3>
+            <div className="p-2 bg-orange-50 dark:bg-orange-900/30 rounded-lg">
+              <Calendar className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-orange-900 dark:text-orange-300">₵{parseFloat(String(todaysOrderAmount || 0)).toFixed(2)}</p>
+        </div>
       </div>
+
+      {/* Last 7 Days Sales Chart */}
+      {past7DaysSales && past7DaysSales.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">Last 7 Days Orders</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Total: <span className="font-bold text-blue-600 dark:text-blue-400">₵{past7DaysSales.reduce((sum, d) => sum + d.sales, 0).toFixed(2)}</span>
+              </p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={past7DaysSales} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={{ stroke: '#e5e7eb' }} />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={{ stroke: '#e5e7eb' }} />
+              <Tooltip content={<SalesTooltip />} cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }} />
+              <Bar dataKey="sales" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Transactions Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -184,7 +243,6 @@ const UserTransactionsPage = ({ auth, user, transactions, totalTopupAmount, tota
               className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value="">All Types</option>
-              <option value="wallet_topup">Wallet Topup</option>
               <option value="topup">Topup</option>
               <option value="order">Order</option>
               <option value="bulk_order">Bulk Order</option>

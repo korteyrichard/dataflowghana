@@ -73,6 +73,11 @@ class User extends Authenticatable
     {
         return $this->hasMany(AFAOrders::class);
     }
+
+    public function webhookEndpoints()
+    {
+        return $this->hasMany(WebhookEndpoint::class);
+    }
     
     /**
      * Get the default role for the user.

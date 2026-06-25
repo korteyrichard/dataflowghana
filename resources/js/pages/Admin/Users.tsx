@@ -3,7 +3,7 @@ import { AdminLayout } from "../../layouts/admin-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageProps, User } from '@/types';
-import { MoreHorizontal, Search, Users, UserCheck, Shield, Receipt } from "lucide-react";
+import { MoreHorizontal, Search, Users, UserCheck, Shield, Receipt, CreditCard, ArrowUpCircle } from "lucide-react";
 import { router } from '@inertiajs/react';
 import Pagination from '@/components/pagination';
 import {
@@ -48,6 +48,8 @@ interface UsersPageProps extends PageProps {
     admins: number;
     totalWalletBalance: number;
     todaysTopup: number;
+    todaysAdminCredit: number;
+    todaysTopupOnly: number;
   };
 }
 
@@ -90,7 +92,7 @@ const UsersPage = ({ auth, users, filterUsername, filterEmail, filterPhone, filt
       }
     >
       {/* User Statistics */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-8 gap-4 mb-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Total Users</h3>
@@ -149,6 +151,26 @@ const UsersPage = ({ auth, users, filterUsername, filterEmail, filterPhone, filt
             </div>
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">₵{userStats.todaysTopup || '0.00'}</p>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-yellow-200 dark:border-yellow-700">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase tracking-wide">Daily Admin Credit</h3>
+            <div className="p-2 bg-yellow-50 dark:bg-yellow-900 rounded-lg">
+              <CreditCard className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">₵{userStats.todaysAdminCredit || '0.00'}</p>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-emerald-200 dark:border-emerald-700">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Daily Topup</h3>
+            <div className="p-2 bg-emerald-50 dark:bg-emerald-900 rounded-lg">
+              <ArrowUpCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">₵{userStats.todaysTopupOnly || '0.00'}</p>
         </div>
       </div>
 

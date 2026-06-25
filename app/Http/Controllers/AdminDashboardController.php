@@ -108,6 +108,18 @@ class AdminDashboardController extends Controller
             ->whereIn('type', ['admin_credit', 'topup', 'wallet_topup'])
             ->sum('amount');
 
+        // Daily admin credit
+        $todaysAdminCredit = Transaction::whereDate('created_at', today())
+            ->where('status', 'completed')
+            ->where('type', 'admin_credit')
+            ->sum('amount');
+
+        // Daily topup (topup + wallet_topup only, excluding admin_credit)
+        $todaysTopupOnly = Transaction::whereDate('created_at', today())
+            ->where('status', 'completed')
+            ->whereIn('type', ['topup', 'wallet_topup'])
+            ->sum('amount');
+
         return Inertia::render('Admin/Users', [
             'users' => $query->select('id', 'name', 'email', 'phone', 'role', 'wallet_balance', 'created_at', 'updated_at')->paginate(15)->appends($request->query()),
             'filterUsername' => $request->input('username', ''),
@@ -121,6 +133,8 @@ class AdminDashboardController extends Controller
                 'admins' => $stats->admins,
                 'totalWalletBalance' => $stats->total_wallet,
                 'todaysTopup' => $todaysTopup,
+                'todaysAdminCredit' => $todaysAdminCredit,
+                'todaysTopupOnly' => $todaysTopupOnly,
             ],
         ]);
     }
@@ -165,7 +179,7 @@ class AdminDashboardController extends Controller
         $query = Order::with([
             'products' => function($q) { $q->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id'); },
             'user:id,name,email'
-        ])->select('id', 'user_id', 'network', 'status', 'api_status', 'total', 'created_at')->latest();
+        ])->select('id', 'user_id', 'network', 'status', 'api_status', 'total', 'created_at')->latest()->orderByDesc('id');
 
         if ($request->filled('network')) {
             $query->where('network', 'like', '%' . $request->input('network') . '%');
@@ -201,7 +215,7 @@ class AdminDashboardController extends Controller
             $query->whereDate('created_at', $request->input('date'));
         }
 
-        $paginatedOrders = $query->paginate(50)->appends($request->query());
+        $paginatedOrders = $query->paginate(100)->appends($request->query());
         
         $paginatedOrders->getCollection()->transform(function($order) {
             $order->products = $order->products->map(function($product) {
@@ -309,56 +323,48 @@ class AdminDashboardController extends Controller
             'status' => 'required|string|in:pending,processing,completed,cancelled',
         ]);
 
-        // Get orders before update for SMS notifications
-        $orders = Order::with('user')->whereIn('id', $request->order_ids)->get();
-        
+        // Handle refunds when cancelling
+        if ($request->status === 'cancelled') {
+            $orders = Order::with('user')->whereIn('id', $request->order_ids)->where('status', '!=', 'cancelled')->get();
+            
+            $transactionData = [];
+            $refundsByUser = [];
+
+            foreach ($orders as $order) {
+                $userId = $order->user_id;
+                $refundsByUser[$userId] = ($refundsByUser[$userId] ?? 0) + $order->total;
+            }
+
+            // Batch increment wallets
+            foreach ($refundsByUser as $userId => $totalRefund) {
+                User::where('id', $userId)->increment('wallet_balance', $totalRefund);
+            }
+
+            // Build transaction records
+            $userBalances = User::whereIn('id', array_keys($refundsByUser))->pluck('wallet_balance', 'id');
+            foreach ($orders as $order) {
+                $balanceAfter = $userBalances[$order->user_id];
+                $transactionData[] = [
+                    'user_id' => $order->user_id,
+                    'order_id' => $order->id,
+                    'amount' => $order->total,
+                    'balance_before' => $balanceAfter - $refundsByUser[$order->user_id],
+                    'balance_after' => $balanceAfter,
+                    'status' => 'completed',
+                    'type' => 'refund',
+                    'description' => "Refund for cancelled order #{$order->id}",
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+
+            if (!empty($transactionData)) {
+                Transaction::insert($transactionData);
+            }
+        }
+
         $updatedCount = Order::whereIn('id', $request->order_ids)
             ->update(['status' => $request->status]);
-
-        // Handle automatic refunds when orders are cancelled
-        if ($request->status === 'cancelled') {
-            $smsService = new MoolreSmsService();
-            foreach ($orders as $order) {
-                if ($order->status !== 'cancelled') {
-                    $user = $order->user;
-                    $refundAmount = $order->total;
-                    $balanceBefore = $user->wallet_balance;
-                    
-                    // Add refund to user's wallet
-                    $user->increment('wallet_balance', $refundAmount);
-                    $balanceAfter = $user->fresh()->wallet_balance;
-                    
-                    // Create refund transaction record
-                    Transaction::create([
-                        'user_id' => $user->id,
-                        'order_id' => $order->id,
-                        'amount' => $refundAmount,
-                        'balance_before' => $balanceBefore,
-                        'balance_after' => $balanceAfter,
-                        'status' => 'completed',
-                        'type' => 'refund',
-                        'description' => "Refund for cancelled order #{$order->id}",
-                    ]);
-                    
-                    // Send SMS notification for refund
-                    if ($user->phone) {
-                        $message = "Your order #{$order->id} has been cancelled and GHS " . number_format($refundAmount, 2) . " has been refunded to your wallet.";
-                        $smsService->sendSms($user->phone, $message);
-                    }
-                }
-            }
-        }
-
-        // Send SMS notifications if status changed to completed
-        if ($request->status === 'completed') {
-            $smsService = new MoolreSmsService();
-            foreach ($orders as $order) {
-                if ($order->status !== 'completed' && $order->user->phone) {
-                    $message = "Your order #{$order->id} has been completed. Total: GHS " . number_format($order->total, 2);
-                    $smsService->sendSms($order->user->phone, $message);
-                }
-            }
-        }
 
         return redirect()->back()->with('success', "Updated {$updatedCount} order(s) successfully.");
     }
@@ -683,7 +689,7 @@ class AdminDashboardController extends Controller
             $query->where('type', $request->input('type'));
         }
 
-        $transactions = $query->paginate(15)->appends($request->query());
+        $transactions = $query->paginate(50)->appends($request->query());
 
         // Calculate totals for all transactions (not just current page)
         $allTransactions = Transaction::where('user_id', $user->id)
@@ -697,12 +703,41 @@ class AdminDashboardController extends Controller
         $totalOrderAmount = $allTransactions->where('type', 'order')->sum('amount');
         $totalRefundAmount = $allTransactions->where('type', 'refund')->sum('amount');
 
+        // Today's orders (sum of both 'order' and 'bulk_order' types)
+        $todaysOrderAmount = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereIn('type', ['order', 'bulk_order'])
+            ->whereDate('created_at', today())
+            ->sum('amount');
+
+        // Last 7 days order sales for this user
+        $last7DaysSales = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereIn('type', ['order', 'bulk_order'])
+            ->where('created_at', '>=', now()->subDays(6)->startOfDay())
+            ->selectRaw('DATE(created_at) as date, SUM(amount) as sales')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->pluck('sales', 'date');
+
+        $past7Days = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $date = now()->subDays($i)->format('Y-m-d');
+            $past7Days[] = [
+                'date' => now()->subDays($i)->format('M d'),
+                'fullDate' => $date,
+                'sales' => (float) ($last7DaysSales[$date] ?? 0),
+            ];
+        }
+
         return Inertia::render('Admin/UserTransactions', [
             'user' => $user,
             'transactions' => $transactions,
             'totalTopupAmount' => $totalTopupAmount,
             'totalOrderAmount' => $totalOrderAmount,
             'totalRefundAmount' => $totalRefundAmount,
+            'todaysOrderAmount' => $todaysOrderAmount,
+            'past7DaysSales' => $past7Days,
             'filterType' => $request->input('type', ''),
         ]);
     }

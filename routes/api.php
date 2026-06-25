@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\AFAController;
+use App\Http\Controllers\Api\WebhookEndpointController;
 
 use App\Http\Controllers\Api\TransactionController;
 use App\Models\User;
@@ -56,6 +57,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/afa/products', [AFAController::class, 'getProducts']);
 
 
+
+        // WEBHOOKS
+        Route::get('/webhooks', [WebhookEndpointController::class, 'index']);
+        Route::post('/webhooks', [WebhookEndpointController::class, 'store']);
+        Route::delete('/webhooks/{id}', [WebhookEndpointController::class, 'destroy']);
 
         // TRANSACTIONS
         Route::get('/transactions', [TransactionController::class, 'index']);
