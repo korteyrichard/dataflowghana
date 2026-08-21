@@ -175,7 +175,7 @@ class DashboardController extends Controller
             'order_id' => null,
             'amount' => $request->amount,
             'balance_before' => $user->wallet_balance,
-            'balance_after' => $user->wallet_balance,
+            'balance_after' => $user->wallet_balance + $request->amount,
             'status' => 'pending',
             'type' => 'topup',
             'description' => 'Wallet top-up of GHS ' . number_format($request->amount, 2),

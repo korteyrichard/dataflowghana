@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\Setting;
 use App\Services\MoolreSmsService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +23,11 @@ class DataEasyStatusSyncService
 
     public function syncOrderStatuses()
     {
+        if (!(bool) Setting::get('dataeasy_order_pusher_enabled', 0)) {
+            Log::info('DataEasy order sync skipped: pusher is disabled');
+            return;
+        }
+
         // Get MTN orders that were pushed to DataEasy (have a UUID reference_id)
         // UUIDs from DataEasy typically have dashes. DataMaster ids are usually numeric strings.
         // We'll filter for MTN orders with reference_id that are not fully numeric or are longer.

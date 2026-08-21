@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Services\MoolreSmsService;
-use App\Services\DataMasterOrderStatusSyncService;
 use App\Services\DataEasyStatusSyncService;
 use App\Services\DataSourceOrderStatusSyncService;
 use App\Services\CodeCraftMtnOrderStatusSyncService;
+use App\Services\DataMastaOrderStatusSyncService;
+use App\Services\RexamartOrderStatusSyncService;
+use App\Services\BundlePortalMtnOrderStatusSyncService;
+use App\Services\BundlePortalOrderStatusSyncService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -25,10 +28,6 @@ class OrderStatusSyncService
     {
         $processingOrders = Order::whereIn('status', ['pending', 'processing'])->get();
         
-        // Sync DataMaster orders first
-        $dataMasterSync = new DataMasterOrderStatusSyncService($this->smsService);
-        $dataMasterSync->syncOrderStatuses();
-        
         // Sync DataEasy orders
         $dataEasySync = new DataEasyStatusSyncService($this->smsService);
         $dataEasySync->syncOrderStatuses();
@@ -41,17 +40,30 @@ class OrderStatusSyncService
         $codecraftMtnSync = new CodeCraftMtnOrderStatusSyncService();
         $codecraftMtnSync->syncOrderStatuses();
         
+        // Sync DataMasta orders
+        $dataMastaSync = new DataMastaOrderStatusSyncService();
+        $dataMastaSync->syncOrderStatuses();
+        
+        // Sync Rexamart orders (Telecel)
+        $rexamartSync = new RexamartOrderStatusSyncService();
+        $rexamartSync->syncOrderStatuses();
+        
+        // Sync BundlePortal MTN orders
+        try {
+            (new BundlePortalMtnOrderStatusSyncService())->syncOrderStatuses();
+        } catch (\Exception $e) {
+            Log::error('BundlePortal MTN sync failed', ['error' => $e->getMessage()]);
+        }
+        
+        // Sync BundlePortal Telecel/AT orders
+        try {
+            (new BundlePortalOrderStatusSyncService())->syncOrderStatuses();
+        } catch (\Exception $e) {
+            Log::error('BundlePortal sync failed', ['error' => $e->getMessage()]);
+        }
+        
         foreach ($processingOrders as $order) {
             try {
-                // Skip MTN Express orders as they're handled by DataMaster sync
-                $isMtnExpress = $order->products->contains(function($product) {
-                    return stripos($product->name, 'mtn express') !== false;
-                });
-                
-                if ($isMtnExpress) {
-                    continue;
-                }
-                
                 // Skip DataSource orders as they're handled by DataSource sync
                 $isDataSource = $order->products->contains(function($product) {
                     return stripos($product->name, 'mtn') !== false && stripos($product->name, 'mtn express') === false;
@@ -64,6 +76,11 @@ class OrderStatusSyncService
                 // Skip DataEasy orders as they're handled by DataEasy sync above
                 $isDataEasy = strlen($order->reference_id) > 20 && !is_numeric($order->reference_id);
                 if ($isDataEasy) {
+                    continue;
+                }
+                
+                $isRexamart = strtolower($order->network) === 'telecel' && $order->reference_id;
+                if ($isRexamart) {
                     continue;
                 }
                 

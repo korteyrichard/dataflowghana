@@ -281,9 +281,8 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
               
 
               <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-                {/* Excel Upload Section - Only for MTN */}
-                {network.id === 'MTN' && (
-                  <div>
+                {/* Excel Upload Section - All networks */}
+                <div>
                     <label className="block text-sm font-medium mb-2 text-white">
                       Upload Excel/CSV File (Bulk Preview)
                     </label>
@@ -304,11 +303,9 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
                       {isProcessing ? 'Processing...' : 'Upload & Preview'}
                     </Button>
                   </div>
-                )}
 
-                {/* Bulk Text Input Section - Only for MTN */}
-                {network.id === 'MTN' && (
-                  <div>
+                {/* Bulk Text Input Section - All networks */}
+                <div>
                     <button 
                       onClick={() => setShowBulkInput(showBulkInput === network.id ? null : network.id)}
                       className="px-4 py-2 bg-gray-800 text-white rounded font-medium mb-3"
@@ -336,7 +333,6 @@ const NetworkCards: React.FC<NetworkCardsProps> = ({ onAddToCart, products = [] 
                       </div>
                     )}
                   </div>
-                )}
 
                 {/* Single Order Section */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

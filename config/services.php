@@ -44,12 +44,6 @@ return [
         'api_key' => env('MOOLRE_API_KEY'),
     ],
 
-    'datamaster' => [
-        'base_url' => env('DATAMASTER_BASE_URL', 'https://user.datamastagh.shop/developer/api/v2'),
-        'secret_key' => env('DATAMASTER_SECRET_KEY'),
-        'public_key' => env('DATAMASTER_PUBLIC_KEY'),
-    ],
-
     'dataeasy' => [
         'base_url' => env('DATAEASY_BASE_URL', 'https://dataeasy.onrender.com/api/v1'),
         'api_key' => env('DATAEASY_API_KEY'),
@@ -61,9 +55,27 @@ return [
         'secret_key' => env('DATASOURCE_SECRET_KEY'),
     ],
 
+    'codecraft' => [
+        'base_url' => env('CODE_CRAFTER_BASE_URL', 'https://api.codecraftnetwork.com/api'),
+        'api_key' => env('CODE_CRAFTER_API_KEY', ''),
+    ],
+
     'codecraft_mtn' => [
         'api_key' => env('CODECRAFT_MTN_API_KEY') ?: env('CODE_CRAFTER_API_KEY', ''),
         'client_email' => env('CODE_CRAFTER_CLIENT_EMAIL', ''),
+    ],
+
+    'datamasta' => [
+        'api_key' => env('DATAMASTA_API_KEY', ''),
+    ],
+
+    'rexamart' => [
+        'api_key' => env('REXAMART_API_KEY', ''),
+    ],
+
+    'bundleportal' => [
+        'base_url' => env('BUNDLEPORTAL_BASE_URL', 'https://api.bundleportal.com/v1'),
+        'api_key'  => env('BUNDLEPORTAL_API_KEY', ''),
     ],
 
 ];

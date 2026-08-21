@@ -129,7 +129,7 @@ class PaymentController extends Controller
         }
         
         $body = file_get_contents("php://input");
-        $hash = hash('sha512', $body . config('paystack.secret_key'));
+        $hash = hash_hmac('sha512', $body, config('paystack.secret_key'));
         return hash_equals($hash, $signature);
     }
 }

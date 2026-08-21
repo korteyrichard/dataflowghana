@@ -4,6 +4,7 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use App\Models\Setting;
 
 class Kernel extends ConsoleKernel
 {
@@ -22,11 +23,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Sync order statuses every 15 minutes
-        $schedule->command('orders:sync-status')->everyFifteenMinutes();
-        
-        // Complete old bigtime and telecel orders every 5 minutes
-        $schedule->command('orders:complete-old')->everyFiveMinutes();
+        // Scheduling is handled in routes/console.php
     }
 
     /**

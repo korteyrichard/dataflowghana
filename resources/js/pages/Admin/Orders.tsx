@@ -56,10 +56,14 @@ interface AdminOrdersPageProps {
   searchUsername: string;
   searchEmail: string;
   filterDate: string;
+  filterApiStatus: string;
+  filterGb: string;
+  perPage: string;
   dailyTotalSales: number;
   allNetworks: string[];
   pendingOrdersCount: number;
   processingOrdersCount: number;
+  orderSyncEnabled: boolean;
   [key: string]: any;
 }
 
@@ -74,10 +78,14 @@ export default function AdminOrders() {
     searchUsername: initialSearchUsername,
     searchEmail: initialSearchEmail,
     filterDate: initialFilterDate,
+    filterApiStatus: initialApiStatusFilter,
+    filterGb: initialGbFilter,
+    perPage: initialPerPage,
     dailyTotalSales,
     allNetworks,
     pendingOrdersCount,
     processingOrdersCount,
+    orderSyncEnabled,
   } = usePage<AdminOrdersPageProps>().props;
 
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
@@ -88,8 +96,12 @@ export default function AdminOrders() {
   const [searchUsername, setSearchUsername] = useState(initialSearchUsername);
   const [searchEmail, setSearchEmail] = useState(initialSearchEmail);
   const [dateFilter, setDateFilter] = useState(initialFilterDate);
+  const [apiStatusFilter, setApiStatusFilter] = useState(initialApiStatusFilter);
+  const [gbFilter, setGbFilter] = useState(initialGbFilter);
+  const [perPage, setPerPage] = useState(initialPerPage);
   const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [retrying, setRetrying] = useState(false);
 
   const networks = allNetworks || [];
 
@@ -104,7 +116,10 @@ export default function AdminOrders() {
     const username = filterName === 'username' ? value : searchUsername;
     const email = filterName === 'email' ? value : searchEmail;
     const date = filterName === 'date' ? value : dateFilter;
-    
+    const apiStatus = filterName === 'api_status' ? value : apiStatusFilter;
+    const gb = filterName === 'gb' ? value : gbFilter;
+    const pp = filterName === 'per_page' ? value : perPage;
+
     if (network) newFilters.network = network;
     if (status) newFilters.status = status;
     if (orderId) newFilters.order_id = orderId;
@@ -112,7 +127,10 @@ export default function AdminOrders() {
     if (username) newFilters.username = username;
     if (email) newFilters.email = email;
     if (date) newFilters.date = date;
-    
+    if (apiStatus) newFilters.api_status = apiStatus;
+    if (gb) newFilters.gb = gb;
+    if (pp) newFilters.per_page = pp;
+
     setNetworkFilter(network);
     setStatusFilter(status);
     setSearchOrderId(orderId);
@@ -120,6 +138,9 @@ export default function AdminOrders() {
     setSearchUsername(username);
     setSearchEmail(email);
     setDateFilter(date);
+    setApiStatusFilter(apiStatus);
+    setGbFilter(gb);
+    setPerPage(pp);
     router.get(route('admin.orders'), newFilters, { preserveState: true, replace: true });
   };
 
@@ -202,7 +223,7 @@ export default function AdminOrders() {
       <Head title="Admin Orders" />
       <div className="max-w-6xl mx-auto py-10 px-2 sm:px-4">
         {/* Order Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-300 mb-2">Pending Orders</h3>
             <p className="text-3xl font-bold text-blue-800 dark:text-blue-200">{pendingOrdersCount}</p>
@@ -214,6 +235,22 @@ export default function AdminOrders() {
           <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-green-700 dark:text-green-300 mb-2">Today's Sales</h3>
             <p className="text-3xl font-bold text-green-800 dark:text-green-200">GHS {dailyTotalSales || '0.00'}</p>
+          </div>
+          <div className={`bg-gradient-to-br ${orderSyncEnabled ? 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-800' : 'from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-200 dark:border-red-800'} border rounded-xl p-6`}>
+            <h3 className={`text-lg font-semibold mb-2 ${orderSyncEnabled ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>Order Syncing</h3>
+            <p className={`text-sm font-medium mb-3 ${orderSyncEnabled ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
+              {orderSyncEnabled ? 'Active' : 'Disabled'}
+            </p>
+            <button
+              onClick={() => {
+                router.post('/admin/toggle-order-sync', { enabled: !orderSyncEnabled }, {
+                  preserveState: true,
+                });
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium text-white ${orderSyncEnabled ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+            >
+              {orderSyncEnabled ? 'Turn Off Syncing' : 'Turn On Syncing'}
+            </button>
           </div>
         </div>
         {/* Bulk Actions */}
@@ -241,6 +278,29 @@ export default function AdminOrders() {
                   className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Update
+                </button>
+                <button
+                  onClick={() => {
+                    if (retrying) return;
+                    setRetrying(true);
+                    router.post(route('admin.orders.retryFailed'), {
+                      order_ids: selectedOrders,
+                    }, {
+                      onSuccess: () => {
+                        setRetrying(false);
+                        setSelectedOrders([]);
+                        router.reload();
+                      },
+                      onError: () => {
+                        setRetrying(false);
+                        alert('Failed to retry orders.');
+                      },
+                    });
+                  }}
+                  disabled={retrying}
+                  className="px-4 py-1.5 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {retrying ? 'Retrying...' : 'Retry Failed Orders'}
                 </button>
                 <button
                   onClick={() => {
@@ -277,8 +337,8 @@ export default function AdminOrders() {
         )}
 
         {/* Search and Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4 mb-8">
-          <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap gap-4 mb-8">
+          <div className="flex flex-col gap-1 min-w-[180px] flex-1">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search by Order ID</label>
             <input
               type="text"
@@ -358,6 +418,44 @@ export default function AdminOrders() {
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by API Status</label>
+            <select
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={apiStatusFilter}
+              onChange={(e) => handleFilterChange('api_status', e.target.value)}
+            >
+              <option value="">--select api status--</option>
+              <option value="disabled">Disabled</option>
+              <option value="failed">Failed</option>
+              <option value="success">Success</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by GB</label>
+            <input
+              type="text"
+              placeholder="e.g. 1, 2, 5..."
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={gbFilter}
+              onChange={(e) => handleFilterChange('gb', e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Orders to Load</label>
+            <select
+              className="px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white shadow-sm focus:ring focus:ring-blue-500 text-sm"
+              value={perPage}
+              onChange={(e) => handleFilterChange('per_page', e.target.value)}
+            >
+              <option value="100">100</option>
+              <option value="500">500</option>
+              <option value="1000">1000</option>
             </select>
           </div>
         </div>
@@ -486,3 +584,4 @@ export default function AdminOrders() {
     </AdminLayout>
   );
 }
+

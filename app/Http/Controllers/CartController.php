@@ -11,6 +11,29 @@ use Illuminate\Support\Facades\Log;
 
 class CartController extends Controller
 {
+    private function resolveProductType(string $role): string
+    {
+        return match($role) {
+            'customer'   => 'customer_product',
+            'agent'      => 'agent_product',
+            'superAgent' => 'super_agent_product',
+            'elite'      => 'elite_product',
+            'dealer', 'admin' => 'dealer_product',
+            default      => 'customer_product',
+        };
+    }
+
+    private function findProductByNetworkId(string $networkId, string $productType): ?Product
+    {
+        $isExpress = strtoupper($networkId) === 'MTN EXPRESS';
+        $dbNetwork = $isExpress ? 'MTN' : $networkId;
+
+        return Product::where('network', $dbNetwork)
+            ->where('name', $isExpress ? 'like' : 'not like', '%Express%')
+            ->where('product_type', $productType)
+            ->first();
+    }
+
     public function store(Request $request)
     {
         $user = Auth::user();
@@ -23,33 +46,8 @@ class CartController extends Controller
                 'beneficiary_number' => 'required|string|max:20',
             ]);
             
-            // Determine product type based on user role
-            if ($user->role === 'customer') {
-                $productType = 'customer_product';
-            } elseif ($user->role === 'agent') {
-                $productType = 'agent_product';
-            } elseif ($user->role === 'superAgent') {
-                $productType = 'super_agent_product';
-            } elseif ($user->role === 'elite') {
-                $productType = 'elite_product';
-            } elseif ($user->role === 'dealer' || $user->role === 'admin') {
-                $productType = 'dealer_product';
-            } else {
-                $productType = 'customer_product';
-            }
-            
-            // Find the product by network and product type
-            $product = Product::where('network', $request->network)
-                ->where('product_type', $productType)
-                ->first();
-            
-            // If no product found and network is MTN EXPRESS, try MTN network with express in name
-            if (!$product && $request->network === 'MTN EXPRESS') {
-                $product = Product::where('network', 'MTN')
-                    ->where('name', 'like', '%mtn express%')
-                    ->where('product_type', $productType)
-                    ->first();
-            }
+            $productType = $this->resolveProductType($user->role);
+            $product = $this->findProductByNetworkId($request->network, $productType);
             
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
@@ -195,35 +193,9 @@ class CartController extends Controller
             }
             
             $user = Auth::user();
-            
-            // Determine product type based on user role
-            if ($user->role === 'customer') {
-                $productType = 'customer_product';
-            } elseif ($user->role === 'agent') {
-                $productType = 'agent_product';
-            } elseif ($user->role === 'superAgent') {
-                $productType = 'super_agent_product';
-            } elseif ($user->role === 'elite') {
-                $productType = 'elite_product';
-            } elseif ($user->role === 'dealer' || $user->role === 'admin') {
-                $productType = 'dealer_product';
-            } else {
-                $productType = 'customer_product';
-            }
-            
-            // Find the product by network and product type
-            $product = Product::where('network', $request->network)
-                ->where('product_type', $productType)
-                ->first();
-            
-            // If no product found and network is MTN EXPRESS, try MTN network with express in name
-            if (!$product && $request->network === 'MTN EXPRESS') {
-                $product = Product::where('network', 'MTN')
-                    ->where('name', 'like', '%MTN Express%')
-                    ->where('product_type', $productType)
-                    ->first();
-            }
-            
+            $productType = $this->resolveProductType($user->role);
+            $product = $this->findProductByNetworkId($request->network, $productType);
+
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }
@@ -306,35 +278,9 @@ class CartController extends Controller
         
         try {
             $user = Auth::user();
-            
-            // Determine product type based on user role
-            if ($user->role === 'customer') {
-                $productType = 'customer_product';
-            } elseif ($user->role === 'agent') {
-                $productType = 'agent_product';
-            } elseif ($user->role === 'superAgent') {
-                $productType = 'super_agent_product';
-            } elseif ($user->role === 'elite') {
-                $productType = 'elite_product';
-            } elseif ($user->role === 'dealer' || $user->role === 'admin') {
-                $productType = 'dealer_product';
-            } else {
-                $productType = 'customer_product';
-            }
-            
-            // Find the product by network and product type
-            $product = Product::where('network', $request->network)
-                ->where('product_type', $productType)
-                ->first();
-            
-            // If no product found and network is MTN EXPRESS, try MTN network with express in name
-            if (!$product && $request->network === 'MTN EXPRESS') {
-                $product = Product::where('network', 'MTN')
-                    ->where('name', 'like', '%MTN Express%')
-                    ->where('product_type', $productType)
-                    ->first();
-            }
-            
+            $productType = $this->resolveProductType($user->role);
+            $product = $this->findProductByNetworkId($request->network, $productType);
+
             if (!$product) {
                 return response()->json(['success' => false, 'message' => 'Product not found'], 400);
             }

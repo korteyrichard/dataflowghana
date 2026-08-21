@@ -4,10 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\DataSourceOrderPusherService;
+use App\Services\CodeCraftOrderPusherService;
 use App\Services\CodeCraftMtnOrderPusherService;
+use App\Services\DataMastaOrderPusherService;
+use App\Services\RexamartOrderPusherService;
+use App\Services\CodeCraftTelecelOrderPusherService;
+use App\Services\BundlePortalMtnOrderPusherService;
+use App\Services\BundlePortalOrderPusherService;
+use App\Services\DataEasyOrderPusherService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -69,12 +77,13 @@ class BulkOrderController extends Controller
                 DB::rollBack();
                 return redirect()->back()->with('error', 'Insufficient wallet balance.');
             }
-            $user->update(['wallet_balance' => $newBalance]);
+            $balanceTracker = $user->wallet_balance; // capture before deduction for transaction records
+            $user->wallet_balance = $newBalance;
+            $user->save();
 
             // Create orders
             $createdOrders = [];
             $transactionData = [];
-            $balanceTracker = $user->wallet_balance;
             
             foreach ($orders as $index => $orderData) {
                 $order = Order::create([
@@ -86,13 +95,16 @@ class BulkOrderController extends Controller
                 ]);
 
                 // Attach product to order
-                $product = Product::where('network', $request->network)->first();
+                $variantId = $orderData['product_variant_id'] ?? null;
+                $product = $variantId
+                    ? \App\Models\ProductVariant::find($variantId)?->product
+                    : Product::where('network', $request->network)->first();
                 if ($product) {
                     $order->products()->attach($product->id, [
                         'quantity' => 1,
                         'price' => $orderData['price'],
                         'beneficiary_number' => $orderData['phone'],
-                        'product_variant_id' => $orderData['product_variant_id'] ?? null,
+                        'product_variant_id' => $variantId,
                     ]);
                 }
 
@@ -113,7 +125,7 @@ class BulkOrderController extends Controller
                 ];
                 
                 $balanceTracker = $balanceAfter;
-                $createdOrders[] = $order;
+                $createdOrders[] = $order->load('products');
             }
             
             // Batch insert all transactions at once
@@ -121,54 +133,62 @@ class BulkOrderController extends Controller
 
             DB::commit();
 
-            // Check service settings
-            $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
-            $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
-            $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
-            $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
+            $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
+            $bundlePortalEnabled = (bool) Setting::get('bundleportal_api_enabled', 0);
             $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
-            
-            // Filter regular MTN orders
-            $mtnOrders = collect($createdOrders)->filter(function($order) {
-                $isMtn = stripos($order->network, 'mtn') !== false;
-                $isMtnExpress = stripos($order->network, 'mtn express') !== false;
-                return $isMtn && !$isMtnExpress;
-            });
-            
-            if ($mtnOrders->count() > 0 && $codecraftMtnEnabled) {
-                // Push MTN bulk orders one by one through CodeCraft
-                Log::info('Pushing MTN bulk orders to CodeCraft one by one', ['order_count' => $mtnOrders->count()]);
-                $codecraftMtnPusher = new CodeCraftMtnOrderPusherService();
-                foreach ($mtnOrders as $order) {
-                    try {
-                        $codecraftMtnPusher->pushOrderToApi($order);
+            $dataMastaEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
+            $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
+            $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
+            $codeCraftTelecelEnabled = (bool) Setting::get('codecraft_telecel_order_pusher_enabled', 0);
+            $rexamartEnabled = (bool) Setting::get('rexamart_order_pusher_enabled', 0);
+            $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
+
+            foreach ($createdOrders as $order) {
+                try {
+                    $isMtnExpress = strtoupper(trim($order->network)) === 'MTN EXPRESS';
+                    $isMtn = !$isMtnExpress && stripos($order->network, 'mtn') !== false;
+                    $isTelecelOrAt = in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime', 'airteltigo']);
+
+                    if ($isMtnExpress && $bundlePortalMtnEnabled) {
+                        (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to BundlePortal MTN', ['order_id' => $order->id]);
+                    } elseif ($isMtnExpress && $codecraftMtnEnabled) {
+                        (new CodeCraftMtnOrderPusherService())->pushOrderToApi($order);
                         Log::info('Bulk order pushed to CodeCraft MTN', ['order_id' => $order->id]);
-                        usleep(500000); // 500ms delay between requests to avoid rate limiting
-                    } catch (\Exception $e) {
-                        Log::error('Failed to push bulk order to CodeCraft MTN', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+                    } elseif ($isMtnExpress) {
+                        $order->update(['api_status' => 'disabled']);
+                    } elseif ($isMtn && !$isMtnExpress && $dataMastaEnabled) {
+                        (new DataMastaOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to DataMasta', ['order_id' => $order->id]);
+                    } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
+                        (new DataSourceOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to DataSource', ['order_id' => $order->id]);
+                    } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
+                        (new DataEasyOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to DataEasy', ['order_id' => $order->id]);
+                    } elseif ($isMtn) {
+                        $order->update(['api_status' => 'disabled']);
+                        Log::warning('No MTN pusher enabled for bulk order', ['order_id' => $order->id]);
+                    } elseif ($isTelecelOrAt && $bundlePortalEnabled) {
+                        (new BundlePortalOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to BundlePortal (Telecel/AT)', ['order_id' => $order->id]);
+                    } elseif (strtolower($order->network) === 'telecel' && $codeCraftTelecelEnabled) {
+                        (new CodeCraftTelecelOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to CodeCraft Telecel', ['order_id' => $order->id]);
+                    } elseif (strtolower($order->network) === 'telecel' && $rexamartEnabled) {
+                        (new RexamartOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to Rexamart', ['order_id' => $order->id]);
+                    } elseif (in_array(strtolower($order->network), ['ishare', 'bigtime']) && $codecraftEnabled) {
+                        (new CodeCraftOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to CodeCraft (AT)', ['order_id' => $order->id]);
+                    } else {
+                        $order->update(['api_status' => 'disabled']);
+                        Log::warning('No pusher enabled for bulk order', ['order_id' => $order->id, 'network' => $order->network]);
                     }
+                } catch (\Exception $e) {
+                    Log::error('Failed to push bulk order', ['order_id' => $order->id, 'error' => $e->getMessage()]);
                 }
-            } elseif ($mtnOrders->count() > 0 && $dataSourceEnabled) {
-                Log::info('Pushing to DataSource bulk API', ['order_count' => $mtnOrders->count()]);
-                $dataSourceOrderPusher = new DataSourceOrderPusherService();
-                $dataSourceOrderPusher->pushBulkOrderToApi($mtnOrders->toArray(), $orders);
-                Log::info('Bulk orders pushed to DataSource API', ['order_count' => $mtnOrders->count()]);
-            } elseif ($mtnOrders->count() > 0) {
-                foreach ($mtnOrders as $order) {
-                    $order->update(['api_status' => 'disabled']);
-                }
-                Log::warning('No MTN order pusher enabled for bulk orders', ['order_count' => $mtnOrders->count()]);
-            }
-            
-            // Handle non-MTN orders
-            $nonMtnOrders = collect($createdOrders)->filter(function($order) {
-                return stripos($order->network, 'mtn') === false;
-            });
-            
-            if ($nonMtnOrders->count() > 0) {
-                foreach ($nonMtnOrders as $order) {
-                    $order->update(['api_status' => 'not_applicable']);
-                }
+                usleep(300000);
             }
 
             return redirect()->route('dashboard.orders')->with('success', 'Bulk order placed successfully!');

@@ -105,10 +105,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->name('admin.')->group(fun
     Route::put('admin/afa-orders/{order}/status', [\App\Http\Controllers\AdminDashboardController::class, 'updateAfaOrderStatus'])->name('afa.orders.updateStatus');
     Route::post('admin/toggle-jaybart-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleJaybartOrderPusher'])->name('toggle.jaybart.order.pusher');
     Route::post('admin/toggle-codecraft-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftOrderPusher'])->name('toggle.codecraft.order.pusher');
-    Route::post('admin/toggle-datamaster-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDatamasterOrderPusher'])->name('toggle.datamaster.order.pusher');
     Route::post('admin/toggle-dataeasy-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataeasyOrderPusher'])->name('toggle.dataeasy.order.pusher');
     Route::post('admin/toggle-datasource-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataSourceOrderPusher'])->name('toggle.datasource.order.pusher');
     Route::post('admin/toggle-codecraft-mtn-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftMtnOrderPusher'])->name('toggle.codecraft.mtn.order.pusher');
+    Route::post('admin/toggle-datamasta-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDatamastaOrderPusher'])->name('toggle.datamasta.order.pusher');
+    Route::post('admin/toggle-rexamart-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleRexamartOrderPusher'])->name('toggle.rexamart.order.pusher');
+    Route::post('admin/toggle-codecraft-telecel-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftTelecelOrderPusher'])->name('toggle.codecraft.telecel.order.pusher');
+    Route::post('admin/bundleportal-mtn-api/toggle', [\App\Http\Controllers\AdminDashboardController::class, 'toggleBundlePortalMtnApi'])->name('bundleportal-mtn-api.toggle');
+    Route::post('admin/bundleportal-api/toggle', [\App\Http\Controllers\AdminDashboardController::class, 'toggleBundlePortalApi'])->name('bundleportal-api.toggle');
+    Route::post('admin/orders/retry-failed', [\App\Http\Controllers\AdminDashboardController::class, 'retryFailedOrders'])->name('orders.retryFailed');
+    Route::post('admin/toggle-order-sync', [\App\Http\Controllers\AdminDashboardController::class, 'toggleOrderSync'])->name('toggle.order.sync');
 });
 
 // Paystack payment routes

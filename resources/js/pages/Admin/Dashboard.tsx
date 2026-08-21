@@ -42,10 +42,14 @@ interface AdminDashboardProps extends PageProps {
   past30DaysSales: SalesData[];
   jaybartOrderPusherEnabled: boolean;
   codecraftOrderPusherEnabled: boolean;
-  datamasterOrderPusherEnabled: boolean;
   dataeasyOrderPusherEnabled: boolean;
   dataSourceOrderPusherEnabled: boolean;
   codecraftMtnOrderPusherEnabled: boolean;
+  dataMastaOrderPusherEnabled: boolean;
+  rexamartOrderPusherEnabled: boolean;
+  codeCraftTelecelOrderPusherEnabled: boolean;
+  bundlePortalMtnApiEnabled: boolean;
+  bundlePortalApiEnabled: boolean;
 }
 
 const StatCard = ({ title, value }: { title: string; value: number | string }) => (
@@ -79,10 +83,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   past30DaysSales,
   jaybartOrderPusherEnabled,
   codecraftOrderPusherEnabled,
-  datamasterOrderPusherEnabled,
   dataeasyOrderPusherEnabled,
   dataSourceOrderPusherEnabled,
   codecraftMtnOrderPusherEnabled,
+  dataMastaOrderPusherEnabled,
+  rexamartOrderPusherEnabled,
+  codeCraftTelecelOrderPusherEnabled,
+  bundlePortalMtnApiEnabled,
+  bundlePortalApiEnabled,
 }) => {
   const { auth } = usePage<AdminDashboardProps>().props;
 
@@ -98,12 +106,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  const toggleDatamasterOrderPusher = () => {
-    router.post('/admin/toggle-datamaster-order-pusher', {
-      enabled: !datamasterOrderPusherEnabled
-    });
-  };
-
   const toggleDataeasyOrderPusher = () => {
     router.post('/admin/toggle-dataeasy-order-pusher', {
       enabled: !dataeasyOrderPusherEnabled
@@ -116,9 +118,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const toggleDatamastaOrderPusher = () => {
+    router.post('/admin/toggle-datamasta-order-pusher', {
+      enabled: !dataMastaOrderPusherEnabled
+    });
+  };
+
+  const toggleRexamartOrderPusher = () => {
+    router.post('/admin/toggle-rexamart-order-pusher', {
+      enabled: !rexamartOrderPusherEnabled
+    });
+  };
+
   const toggleCodecraftMtnOrderPusher = () => {
     router.post('/admin/toggle-codecraft-mtn-order-pusher', {
       enabled: !codecraftMtnOrderPusherEnabled
+    });
+  };
+
+  const toggleCodecraftTelecelOrderPusher = () => {
+    router.post('/admin/toggle-codecraft-telecel-order-pusher', {
+      enabled: !codeCraftTelecelOrderPusherEnabled
+    });
+  };
+
+  const toggleBundlePortalMtnApi = () => {
+    router.post(route('admin.bundleportal-mtn-api.toggle'), {
+      enabled: !bundlePortalMtnApiEnabled
+    });
+  };
+
+  const toggleBundlePortalApi = () => {
+    router.post(route('admin.bundleportal-api.toggle'), {
+      enabled: !bundlePortalApiEnabled
     });
   };
 
@@ -238,30 +270,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* DataMaster Order Pusher */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">DataMaster Order Pusher</h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-300">
-                    {datamasterOrderPusherEnabled ? 'MTN Express orders are being pushed to DataMaster API' : 'DataMaster order pushing is disabled'}
-                  </p>
-                </div>
-                <button
-                  onClick={toggleDatamasterOrderPusher}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                    datamasterOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      datamasterOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-
             {/* DataEasy Order Pusher */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
               <div className="flex items-center justify-between">
@@ -310,6 +318,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            {/* DataMasta Order Pusher */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">DataMasta Order Pusher</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {dataMastaOrderPusherEnabled ? 'MTN orders are being pushed to DataMasta API' : 'DataMasta order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleDatamastaOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    dataMastaOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      dataMastaOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             {/* CodeCraft MTN Order Pusher */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
               <div className="flex items-center justify-between">
@@ -328,6 +360,102 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                       codecraftMtnOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* CodeCraft Telecel Order Pusher */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">CodeCraft Telecel Order Pusher</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {codeCraftTelecelOrderPusherEnabled ? 'Telecel orders are being pushed to CodeCraft API' : 'CodeCraft Telecel order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleCodecraftTelecelOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    codeCraftTelecelOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      codeCraftTelecelOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Rexamart Order Pusher */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Rexamart Order Pusher</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {rexamartOrderPusherEnabled ? 'Telecel orders are being pushed to Rexamart API' : 'Rexamart order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleRexamartOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    rexamartOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      rexamartOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Bundle Portal Order Pusher MTN */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Bundle Portal Order Pusher MTN (MTN)</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {bundlePortalMtnApiEnabled ? 'MTN orders are being pushed to Bundle Portal API' : 'Bundle Portal MTN order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleBundlePortalMtnApi}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    bundlePortalMtnApiEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      bundlePortalMtnApiEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Bundle Portal Order Pusher Telecel/AT/Ishare */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Bundle Portal Order Pusher (Telecel, AT, Ishare)</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {bundlePortalApiEnabled ? 'Telecel/AT/Ishare orders are being pushed to Bundle Portal API' : 'Bundle Portal Telecel/AT order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleBundlePortalApi}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    bundlePortalApiEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      bundlePortalApiEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>

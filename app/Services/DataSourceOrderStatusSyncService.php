@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +26,11 @@ class DataSourceOrderStatusSyncService
      */
     public function syncOrderStatuses(): void
     {
+        if (!(bool) Setting::get('datasource_order_pusher_enabled', 0)) {
+            Log::info('DataSource order sync skipped: pusher is disabled');
+            return;
+        }
+
         // 🔒 Prevent overlapping cron runs
         $lock = Cache::lock('datasource_order_sync_lock', 240);
 

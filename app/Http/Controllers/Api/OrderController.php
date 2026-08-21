@@ -15,6 +15,11 @@ use App\Services\CodeCraftMtnOrderPusherService;
 use App\Services\MtnExpressOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use App\Services\DataSourceOrderPusherService;
+use App\Services\DataMastaOrderPusherService;
+use App\Services\RexamartOrderPusherService;
+use App\Services\CodeCraftTelecelOrderPusherService;
+use App\Services\BundlePortalMtnOrderPusherService;
+use App\Services\BundlePortalOrderPusherService;
 use App\Models\Transaction;
 use App\Models\Setting;
 
@@ -161,21 +166,33 @@ class OrderController extends Controller
         // Push order to external API based on network (if enabled)
         try {
             $isMtn = stripos($order->network, 'mtn') !== false;
-            $isMtnExpress = stripos($order->network, 'mtn express') !== false;
-            $datamasterEnabled = (bool) Setting::get('datamaster_order_pusher_enabled', 1);
+            $order->load('products');
+            $isMtnExpress = $order->products->contains(fn($p) => stripos($p->name, 'mtn express') !== false);
+            $isTelecelOrAt = in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime', 'airteltigo']);
+            $datamasterEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
             $codecraftEnabled = (bool) Setting::get('codecraft_order_pusher_enabled', 1);
             $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
             $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
+            $rexamartEnabled = (bool) Setting::get('rexamart_order_pusher_enabled', 0);
+            $codeCraftTelecelEnabled = (bool) Setting::get('codecraft_telecel_order_pusher_enabled', 0);
+            $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
+            $bundlePortalEnabled = (bool) Setting::get('bundleportal_api_enabled', 0);
             
-            if ($isMtnExpress && $datamasterEnabled) {
-                $mtnOrderPusher = new MtnExpressOrderPusherService();
-                $mtnOrderPusher->pushOrderToApi($order);
-                Log::info('API Order pushed to DataMaster API (MTN Express)', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif ($isMtn && !$isMtnExpress && $codecraftMtnEnabled) {
+            if ($isMtnExpress && $bundlePortalMtnEnabled) {
+                (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
+                Log::info('API Order pushed to BundlePortal MTN', ['orderId' => $order->id]);
+            } elseif ($isMtnExpress && $codecraftMtnEnabled) {
                 $codecraftMtnPusher = new CodeCraftMtnOrderPusherService();
                 $codecraftMtnPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to CodeCraft MTN API', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif ($isMtnExpress) {
+                $order->update(['api_status' => 'disabled']);
+                Log::info('MTN Express order pusher disabled - skipping', ['orderId' => $order->id]);
+            } elseif ($isMtn && !$isMtnExpress && $datamasterEnabled) {
+                $dataMastaPusher = new DataMastaOrderPusherService();
+                $dataMastaPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to DataMasta API', ['orderId' => $order->id, 'network' => $order->network]);
             } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
                 $dataSourceOrderPusher = new DataSourceOrderPusherService();
                 $dataSourceOrderPusher->pushOrderToApi($order);
@@ -184,7 +201,21 @@ class OrderController extends Controller
                 $dataEasyOrderPusher = new DataEasyOrderPusherService();
                 $dataEasyOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif (in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime']) && $codecraftEnabled) {
+            } elseif ($isMtn && !$isMtnExpress) {
+                $order->update(['api_status' => 'disabled']);
+                Log::info('No MTN pusher enabled - skipping', ['orderId' => $order->id]);
+            } elseif ($isTelecelOrAt && $bundlePortalEnabled) {
+                (new BundlePortalOrderPusherService())->pushOrderToApi($order);
+                Log::info('API Order pushed to BundlePortal (Telecel/AT)', ['orderId' => $order->id]);
+            } elseif (strtolower($order->network) === 'telecel' && $codeCraftTelecelEnabled) {
+                $codeCraftTelecelPusher = new CodeCraftTelecelOrderPusherService();
+                $codeCraftTelecelPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to CodeCraft Telecel API', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif (strtolower($order->network) === 'telecel' && $rexamartEnabled) {
+                $rexamartOrderPusher = new RexamartOrderPusherService();
+                $rexamartOrderPusher->pushOrderToApi($order);
+                Log::info('API Order pushed to Rexamart API', ['orderId' => $order->id, 'network' => $order->network]);
+            } elseif (in_array(strtolower($order->network), ['ishare', 'bigtime']) && $codecraftEnabled) {
                 $codeCraftOrderPusher = new CodeCraftOrderPusherService();
                 $codeCraftOrderPusher->pushOrderToApi($order);
                 Log::info('API Order pushed to CodeCraft API', ['orderId' => $order->id, 'network' => $order->network]);

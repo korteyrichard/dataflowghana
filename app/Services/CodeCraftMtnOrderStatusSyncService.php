@@ -30,7 +30,10 @@ class CodeCraftMtnOrderStatusSyncService
         $orders = Order::whereIn('status', ['pending', 'processing'])
             ->whereNotNull('reference_id')
             ->where('reference_id', 'like', 'API%')
-            ->where('network', 'like', '%MTN%')
+            ->where(function ($q) {
+                $q->where('network', 'like', '%MTN%')
+                  ->orWhere('network', 'like', '%TELECEL%');
+            })
             ->with('user', 'products')
             ->get();
 

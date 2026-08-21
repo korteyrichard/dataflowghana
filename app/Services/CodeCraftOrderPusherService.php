@@ -137,7 +137,8 @@ class CodeCraftOrderPusherService
         $productName = strtolower($productName);
         
         if (stripos($productName, 'telecel') !== false) {
-            return 'TELECEL';
+            Log::info('Telecel order detected, skipping CodeCraft processing', ['product_name' => $productName]);
+            return null;
         } elseif (stripos($productName, 'ishare') !== false) {
             return 'AT';
         } elseif (stripos($productName, 'bigtime') !== false) {

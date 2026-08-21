@@ -12,6 +12,11 @@ class SyncOrderStatuses extends Command
 
     public function handle(OrderStatusSyncService $syncService)
     {
+        if (!(bool) \App\Models\Setting::get('order_sync_enabled', 1)) {
+            $this->info('Order syncing is disabled. Skipping.');
+            return;
+        }
+
         $this->info('Syncing order statuses...');
         $syncService->syncOrderStatuses();
         $this->info('Order statuses synced successfully!');

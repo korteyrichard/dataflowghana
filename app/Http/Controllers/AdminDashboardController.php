@@ -11,8 +11,15 @@ use App\Models\Transaction;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Services\MoolreSmsService;
+use App\Services\DataMastaOrderPusherService;
+use App\Services\CodeCraftMtnOrderPusherService;
+use App\Services\DataSourceOrderPusherService;
+use App\Services\DataEasyOrderPusherService;
+use App\Services\BundlePortalMtnOrderPusherService;
+use App\Services\BundlePortalOrderPusherService;
 
 class AdminDashboardController extends Controller
 {
@@ -61,10 +68,14 @@ class AdminDashboardController extends Controller
             'past30DaysSales' => $past30DaysFormatted,
             'jaybartOrderPusherEnabled' => (bool) Setting::get('jaybart_order_pusher_enabled', 1),
             'codecraftOrderPusherEnabled' => (bool) Setting::get('codecraft_order_pusher_enabled', 1),
-            'datamasterOrderPusherEnabled' => (bool) Setting::get('datamaster_order_pusher_enabled', 1),
             'dataeasyOrderPusherEnabled' => (bool) Setting::get('dataeasy_order_pusher_enabled', 0),
             'dataSourceOrderPusherEnabled' => (bool) Setting::get('datasource_order_pusher_enabled', 1),
             'codecraftMtnOrderPusherEnabled' => (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0),
+            'dataMastaOrderPusherEnabled' => (bool) Setting::get('datamasta_order_pusher_enabled', 0),
+            'rexamartOrderPusherEnabled' => (bool) Setting::get('rexamart_order_pusher_enabled', 0),
+            'codeCraftTelecelOrderPusherEnabled' => (bool) Setting::get('codecraft_telecel_order_pusher_enabled', 0),
+            'bundlePortalMtnApiEnabled' => (bool) Setting::get('bundleportal_mtn_api_enabled', 0),
+            'bundlePortalApiEnabled' => (bool) Setting::get('bundleportal_api_enabled', 0),
         ]);
     }
 
@@ -215,7 +226,29 @@ class AdminDashboardController extends Controller
             $query->whereDate('created_at', $request->input('date'));
         }
 
-        $paginatedOrders = $query->paginate(100)->appends($request->query());
+        if ($request->filled('api_status')) {
+            $query->where('api_status', $request->input('api_status'));
+        }
+
+        if ($request->filled('gb')) {
+            $gb = $request->input('gb');
+            $query->whereHas('products', function($q) use ($gb) {
+                $q->whereIn('order_product.product_variant_id', 
+                    \App\Models\ProductVariant::whereNotNull('variant_attributes')
+                        ->get()
+                        ->filter(function($v) use ($gb) {
+                            $size = $v->variant_attributes['size'] ?? null;
+                            if (!$size) return false;
+                            $numeric = preg_replace('/[^0-9.]/', '', $size);
+                            return $numeric == $gb;
+                        })
+                        ->pluck('id')
+                );
+            });
+        }
+
+        $perPage = in_array((int) $request->input('per_page'), [100, 500, 1000]) ? (int) $request->input('per_page') : 100;
+        $paginatedOrders = $query->paginate($perPage)->appends($request->query());
         
         $paginatedOrders->getCollection()->transform(function($order) {
             $order->products = $order->products->map(function($product) {
@@ -245,9 +278,13 @@ class AdminDashboardController extends Controller
             'searchUsername' => $request->input('username', ''),
             'searchEmail' => $request->input('email', ''),
             'filterDate' => $request->input('date', ''),
+            'filterApiStatus' => $request->input('api_status', ''),
+            'filterGb' => $request->input('gb', ''),
+            'perPage' => $request->input('per_page', '100'),
             'dailyTotalSales' => $dailyTotalSales,
             'pendingOrdersCount' => $pendingOrdersCount,
             'processingOrdersCount' => $processingOrdersCount,
+            'orderSyncEnabled' => (bool) Setting::get('order_sync_enabled', 1),
         ]);
     }
 
@@ -270,39 +307,39 @@ class AdminDashboardController extends Controller
         ]);
 
         $oldStatus = $order->status;
-        $order->update(['status' => $request->status]);
 
-        // Handle automatic refund when order is cancelled
-        if ($request->status === 'cancelled' && $oldStatus !== 'cancelled') {
-            $user = $order->user;
-            $refundAmount = $order->total;
-            $balanceBefore = $user->wallet_balance;
-            
-            // Add refund to user's wallet
-            $user->increment('wallet_balance', $refundAmount);
-            $balanceAfter = $user->fresh()->wallet_balance;
-            
-            // Create refund transaction record
-            Transaction::create([
-                'user_id' => $user->id,
-                'order_id' => $order->id,
-                'amount' => $refundAmount,
-                'balance_before' => $balanceBefore,
-                'balance_after' => $balanceAfter,
-                'status' => 'completed',
-                'type' => 'refund',
-                'description' => "Refund for cancelled order #{$order->id}",
-            ]);
-            
-            // Send SMS notification for refund
-            if ($user->phone) {
-                $smsService = new MoolreSmsService();
-                $message = "Your order #{$order->id} has been cancelled and GHS " . number_format($refundAmount, 2) . " has been refunded to your wallet.";
-                $smsService->sendSms($user->phone, $message);
+        DB::transaction(function () use ($request, $order, $oldStatus) {
+            $order->update(['status' => $request->status]);
+
+            if ($request->status === 'cancelled' && $oldStatus !== 'cancelled') {
+                $user = User::lockForUpdate()->find($order->user_id);
+                $refundAmount = $order->total;
+                $balanceBefore = $user->wallet_balance;
+
+                $user->increment('wallet_balance', $refundAmount);
+                $balanceAfter = $user->fresh()->wallet_balance;
+
+                Transaction::create([
+                    'user_id' => $user->id,
+                    'order_id' => $order->id,
+                    'amount' => $refundAmount,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'status' => 'completed',
+                    'type' => 'refund',
+                    'description' => "Refund for cancelled order #{$order->id}",
+                ]);
             }
+        });
+
+        // SMS notifications (outside transaction — non-critical)
+        if ($request->status === 'cancelled' && $oldStatus !== 'cancelled' && $order->user->phone) {
+            $refundAmount = $order->total;
+            $smsService = new MoolreSmsService();
+            $message = "Your order #{$order->id} has been cancelled and GHS " . number_format($refundAmount, 2) . " has been refunded to your wallet.";
+            $smsService->sendSms($order->user->phone, $message);
         }
 
-        // Send SMS if status changed to completed
         if ($request->status === 'completed' && $oldStatus !== 'completed' && $order->user->phone) {
             $smsService = new MoolreSmsService();
             $message = "Your order #{$order->id} for {$order->products->first()->name} to {$order->beneficiary_number} has been completed. Total: GHS " . number_format($order->total, 2);
@@ -326,41 +363,40 @@ class AdminDashboardController extends Controller
         // Handle refunds when cancelling
         if ($request->status === 'cancelled') {
             $orders = Order::with('user')->whereIn('id', $request->order_ids)->where('status', '!=', 'cancelled')->get();
-            
-            $transactionData = [];
-            $refundsByUser = [];
 
-            foreach ($orders as $order) {
-                $userId = $order->user_id;
-                $refundsByUser[$userId] = ($refundsByUser[$userId] ?? 0) + $order->total;
-            }
+            DB::transaction(function () use ($orders) {
+                $refundsByUser = [];
+                foreach ($orders as $order) {
+                    $refundsByUser[$order->user_id] = ($refundsByUser[$order->user_id] ?? 0) + $order->total;
+                }
 
-            // Batch increment wallets
-            foreach ($refundsByUser as $userId => $totalRefund) {
-                User::where('id', $userId)->increment('wallet_balance', $totalRefund);
-            }
+                foreach ($refundsByUser as $userId => $totalRefund) {
+                    User::where('id', $userId)->lockForUpdate()->first();
+                    User::where('id', $userId)->increment('wallet_balance', $totalRefund);
+                }
 
-            // Build transaction records
-            $userBalances = User::whereIn('id', array_keys($refundsByUser))->pluck('wallet_balance', 'id');
-            foreach ($orders as $order) {
-                $balanceAfter = $userBalances[$order->user_id];
-                $transactionData[] = [
-                    'user_id' => $order->user_id,
-                    'order_id' => $order->id,
-                    'amount' => $order->total,
-                    'balance_before' => $balanceAfter - $refundsByUser[$order->user_id],
-                    'balance_after' => $balanceAfter,
-                    'status' => 'completed',
-                    'type' => 'refund',
-                    'description' => "Refund for cancelled order #{$order->id}",
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            }
+                $userBalances = User::whereIn('id', array_keys($refundsByUser))->pluck('wallet_balance', 'id');
+                $transactionData = [];
+                foreach ($orders as $order) {
+                    $balanceAfter = $userBalances[$order->user_id];
+                    $transactionData[] = [
+                        'user_id' => $order->user_id,
+                        'order_id' => $order->id,
+                        'amount' => $order->total,
+                        'balance_before' => $balanceAfter - $refundsByUser[$order->user_id],
+                        'balance_after' => $balanceAfter,
+                        'status' => 'completed',
+                        'type' => 'refund',
+                        'description' => "Refund for cancelled order #{$order->id}",
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
 
-            if (!empty($transactionData)) {
-                Transaction::insert($transactionData);
-            }
+                if (!empty($transactionData)) {
+                    Transaction::insert($transactionData);
+                }
+            });
         }
 
         $updatedCount = Order::whereIn('id', $request->order_ids)
@@ -383,9 +419,22 @@ class AdminDashboardController extends Controller
             $query->where('type', $request->input('type'));
         }
 
+        if ($request->filled('username')) {
+            $query->whereHas('user', fn($q) => $q->where('name', 'like', '%' . $request->input('username') . '%'));
+        }
+
+        if ($request->filled('date')) {
+            $query->whereDate('created_at', $request->input('date'));
+        }
+
+        $perPage = in_array((int) $request->input('per_page'), [100, 500, 1000]) ? (int) $request->input('per_page') : 100;
+
         return Inertia::render('Admin/Transactions', [
-            'transactions' => $query->paginate(15),
+            'transactions' => $query->paginate($perPage)->appends($request->query()),
             'filterType' => $request->input('type', ''),
+            'filterUsername' => $request->input('username', ''),
+            'filterDate' => $request->input('date', ''),
+            'perPage' => $request->input('per_page', '100'),
         ]);
     }
 
@@ -401,12 +450,13 @@ class AdminDashboardController extends Controller
             'role' => 'required|string|in:customer,agent,admin,dealer,elite,superAgent',
         ]);
 
-        User::create([
+        $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => bcrypt($request->password),
-            'role' => $request->role,
         ]);
+        $user->role = $request->role;
+        $user->save();
 
         return redirect()->route('admin.users');
     }
@@ -891,15 +941,15 @@ class AdminDashboardController extends Controller
     }
 
     /**
-     * Toggle DataMaster order pusher functionality.
+     * Toggle DataMasta order pusher functionality.
      */
-    public function toggleDatamasterOrderPusher(Request $request)
+    public function toggleDatamastaOrderPusher(Request $request)
     {
         $enabled = $request->input('enabled', false);
-        Setting::set('datamaster_order_pusher_enabled', $enabled ? '1' : '0');
+        Setting::set('datamasta_order_pusher_enabled', $enabled ? '1' : '0');
         
         $status = $enabled ? 'enabled' : 'disabled';
-        return redirect()->back()->with('success', "DataMaster order pusher {$status} successfully.");
+        return redirect()->back()->with('success', "DataMasta order pusher {$status} successfully.");
     }
 
     /**
@@ -936,5 +986,116 @@ class AdminDashboardController extends Controller
         
         $status = $enabled ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "CodeCraft MTN order pusher {$status} successfully.");
+    }
+
+    public function toggleCodecraftTelecelOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('codecraft_telecel_order_pusher_enabled', $enabled ? '1' : '0');
+
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "CodeCraft Telecel order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle Rexamart order pusher functionality.
+     */
+    public function toggleRexamartOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('rexamart_order_pusher_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Rexamart order pusher {$status} successfully.");
+    }
+
+    public function toggleBundlePortalMtnApi(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('bundleportal_mtn_api_enabled', $enabled ? '1' : '0');
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Bundle Portal MTN order pusher {$status} successfully.");
+    }
+
+    public function toggleBundlePortalApi(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('bundleportal_api_enabled', $enabled ? '1' : '0');
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Bundle Portal order pusher {$status} successfully.");
+    }
+
+    /**
+     * Toggle order sync cron jobs.
+     */
+    public function toggleOrderSync(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('order_sync_enabled', $enabled ? '1' : '0');
+        
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Order syncing {$status} successfully.");
+    }
+
+    /**
+     * Retry failed MTN orders by pushing them to the enabled API pusher.
+     */
+    public function retryFailedOrders(Request $request)
+    {
+        $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'exists:orders,id',
+        ]);
+
+        $orders = Order::with('products')->whereIn('id', $request->order_ids)
+            ->where('api_status', 'failed')
+            ->where('network', 'like', '%mtn%')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return redirect()->back()->with('error', 'No failed MTN orders found in selection.');
+        }
+
+        $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
+        $dataMastaEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
+        $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
+        $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
+        $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
+
+        if (!$bundlePortalMtnEnabled && !$dataMastaEnabled && !$codecraftMtnEnabled && !$dataSourceEnabled && !$dataeasyEnabled) {
+            return redirect()->back()->with('error', 'No MTN pusher is currently enabled.');
+        }
+
+        $successCount = 0;
+
+        foreach ($orders as $order) {
+            try {
+                $isMtnExpress = $order->products->contains(fn($p) => stripos($p->name, 'mtn express') !== false);
+                if ($isMtnExpress && $bundlePortalMtnEnabled) {
+                    (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
+                } elseif ($isMtnExpress && $codecraftMtnEnabled) {
+                    (new CodeCraftMtnOrderPusherService())->pushOrderToApi($order);
+                } elseif (!$isMtnExpress && $dataMastaEnabled) {
+                    (new DataMastaOrderPusherService())->pushOrderToApi($order);
+                } elseif (!$isMtnExpress && $dataSourceEnabled) {
+                    (new DataSourceOrderPusherService())->pushOrderToApi($order);
+                } elseif (!$isMtnExpress && $dataeasyEnabled) {
+                    (new DataEasyOrderPusherService())->pushOrderToApi($order);
+                }
+
+                $order->refresh();
+                if ($order->api_status === 'success') {
+                    $successCount++;
+                    // Reset order status to pending since it's been re-submitted
+                    if ($order->status === 'completed') {
+                        $order->update(['status' => 'pending']);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Retry failed order exception', ['order_id' => $order->id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return redirect()->back()->with('success', "Retried {$orders->count()} order(s). {$successCount} succeeded.");
     }
 }

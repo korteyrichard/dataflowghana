@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\Setting;
 use App\Services\MoolreSmsService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +23,11 @@ class MtnOrderStatusSyncService
 
     public function syncOrderStatuses()
     {
+        if (!(bool) Setting::get('datasource_order_pusher_enabled', 0)) {
+            Log::info('MTN order sync skipped: datasource pusher is disabled');
+            return;
+        }
+
         $processingOrders = Order::whereIn('status', ['pending', 'processing'])
             ->whereNotNull('reference_id')
             ->whereHas('products', function($query) {

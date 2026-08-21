@@ -22,8 +22,8 @@ interface Transaction {
   type: string;
   balance_before?: number | null;
   balance_after?: number | null;
-  user?: User; // Direct user relationship for topups
-  order?: Order; // Order relationship for order transactions
+  user?: User;
+  order?: Order;
 }
 
 interface PaginatedTransactions {
@@ -45,12 +45,16 @@ interface AdminTransactionsPageProps {
   transactions: PaginatedTransactions;
   auth: any;
   filterType: string;
+  filterUsername: string;
+  filterDate: string;
+  perPage: string;
   [key: string]: any;
 }
 
 const typeLabels: Record<string, string> = {
   topup: 'Wallet Top Up',
   order: 'Order Purchase',
+  bulk_order: 'Bulk Order',
   agent_fee: 'Agent Fee',
   refund: 'Refund',
   admin_credit: 'Admin Credit',
@@ -60,6 +64,7 @@ const typeLabels: Record<string, string> = {
 const typeColors: Record<string, string> = {
   topup: 'bg-green-100 text-green-800',
   order: 'bg-blue-100 text-blue-800',
+  bulk_order: 'bg-indigo-100 text-indigo-800',
   agent_fee: 'bg-orange-100 text-orange-800',
   refund: 'bg-green-100 text-green-800',
   admin_credit: 'bg-emerald-100 text-emerald-800',
@@ -67,43 +72,103 @@ const typeColors: Record<string, string> = {
 };
 
 const formatBalance = (balance: number | null | undefined): string => {
-  if (balance === null || balance === undefined) {
-    return '-';
-  }
+  if (balance === null || balance === undefined) return '-';
   const num = typeof balance === 'string' ? parseFloat(balance) : balance;
   return isNaN(num) ? '-' : `₵${num.toFixed(2)}`;
 };
 
 export default function AdminTransactions() {
-  const { transactions, auth, filterType: initialFilterType } = usePage<AdminTransactionsPageProps>().props;
-  const [filterType, setFilterType] = useState(initialFilterType);
+  const { transactions, auth, filterType: initialFilterType, filterUsername: initialUsername, filterDate: initialDate, perPage: initialPerPage } =
+    usePage<AdminTransactionsPageProps>().props;
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newFilter = e.target.value;
-    setFilterType(newFilter);
-    router.get(route('admin.transactions'), { type: newFilter }, { preserveState: true, replace: true });
+  const [filterType, setFilterType] = useState(initialFilterType);
+  const [username, setUsername] = useState(initialUsername);
+  const [date, setDate] = useState(initialDate);
+  const [perPage, setPerPage] = useState(initialPerPage);
+
+  const applyFilters = (overrides: Record<string, string> = {}) => {
+    const params: Record<string, string> = {};
+    const merged = { type: filterType, username, date, per_page: perPage, ...overrides };
+    Object.entries(merged).forEach(([k, v]) => { if (v) params[k] = v; });
+    router.get(route('admin.transactions'), params, { preserveState: true, replace: true });
   };
 
   return (
     <AdminLayout user={auth?.user} header={<h2 className="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">Admin Transactions</h2>}>
       <Head title="Admin Transactions" />
       <div className="py-8 max-w-6xl mx-auto">
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <label className="font-medium">Filter by Type:</label>
-          <select
-            className="border rounded px-3 py-2 w-full sm:w-60"
-            value={filterType}
-            onChange={handleFilterChange}
+        <div className="mb-4 flex flex-wrap gap-2 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600">Filter by Type</label>
+            <select
+              className="border rounded px-3 py-2 text-sm"
+              value={filterType}
+              onChange={(e) => { setFilterType(e.target.value); applyFilters({ type: e.target.value }); }}
+            >
+              <option value="">All Types</option>
+              <option value="topup">Wallet Top Ups</option>
+              <option value="order">Order Purchases</option>
+              <option value="bulk_order">Bulk Orders</option>
+              <option value="agent_fee">Agent Fees</option>
+              <option value="refund">Refunds</option>
+              <option value="admin_credit">Admin Credits</option>
+              <option value="admin_debit">Admin Debits</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600">Username</label>
+            <input
+              type="text"
+              className="border rounded px-3 py-2 text-sm w-44"
+              placeholder="Search username..."
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && applyFilters({ username })}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600">Date</label>
+            <input
+              type="date"
+              className="border rounded px-3 py-2 text-sm"
+              value={date}
+              onChange={(e) => { setDate(e.target.value); applyFilters({ date: e.target.value }); }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600">Per Page</label>
+            <select
+              className="border rounded px-3 py-2 text-sm"
+              value={perPage}
+              onChange={(e) => { setPerPage(e.target.value); applyFilters({ per_page: e.target.value }); }}
+            >
+              <option value="100">100</option>
+              <option value="500">500</option>
+              <option value="1000">1000</option>
+            </select>
+          </div>
+
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            onClick={() => applyFilters()}
           >
-            <option value="" className='text-slate-600'>All Types</option>
-            <option value="topup" className='text-slate-600'>Wallet Top Ups</option>
-            <option value="order" className='text-slate-600'>Order Purchases</option>
-            <option value="agent_fee" className='text-slate-600'>Agent Fees</option>
-            <option value="refund" className='text-slate-600'>Refunds</option>
-            <option value="admin_credit" className='text-slate-600'>Admin Credits</option>
-            <option value="admin_debit" className='text-slate-600'>Admin Debits</option>
-          </select>
+            Search
+          </button>
+
+          <button
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+            onClick={() => {
+              setFilterType(''); setUsername(''); setDate(''); setPerPage('100');
+              router.get(route('admin.transactions'), {}, { preserveState: false, replace: true });
+            }}
+          >
+            Clear
+          </button>
         </div>
+
         {transactions.data.length === 0 ? (
           <div>No transactions found.</div>
         ) : (
@@ -129,8 +194,8 @@ export default function AdminTransactions() {
                     <td className="px-4 py-3 text-sm">₵{transaction.amount}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${typeColors[transaction.type]}`}>
-                          {typeLabels[transaction.type]}
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${typeColors[transaction.type] ?? 'bg-gray-100 text-gray-800'}`}>
+                          {typeLabels[transaction.type] ?? transaction.type.replace('_', ' ')}
                         </span>
                         {transaction.order?.is_api_order && (
                           <span className="px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">API</span>
@@ -156,7 +221,7 @@ export default function AdminTransactions() {
             </table>
           </div>
         )}
-        
+
         <Pagination data={transactions} />
       </div>
     </AdminLayout>
