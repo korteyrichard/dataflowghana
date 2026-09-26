@@ -74,8 +74,14 @@ return [
     ],
 
     'bundleportal' => [
-        'base_url' => env('BUNDLEPORTAL_BASE_URL', 'https://api.bundleportal.com/v1'),
+        'base_url' => env('BUNDLEPORTAL_BASE_URL', 'https://api.bundleportal.com/v2'),
         'api_key'  => env('BUNDLEPORTAL_API_KEY', ''),
+        'webhook_secret' => env('BUNDLEPORTAL_WEBHOOK_SECRET', ''),
+    ],
+
+    'dataworks' => [
+        'base_url' => env('DATAWORKS_BASE_URL', 'https://dataworksgh.com/api/v1'),
+        'api_key' => env('DATAWORKS_API_KEY', ''),
     ],
 
 ];

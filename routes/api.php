@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\AFAController;
 use App\Http\Controllers\Api\WebhookEndpointController;
+use App\Http\Controllers\Api\BundlePortalWebhookController;
 
 use App\Http\Controllers\Api\TransactionController;
 use App\Models\User;
+
+Route::post('/bundleportal/webhook', [BundlePortalWebhookController::class, 'handle']);
 
 Route::prefix('v1')->group(function () {
 

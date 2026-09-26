@@ -9,8 +9,7 @@ use App\Services\DataSourceOrderStatusSyncService;
 use App\Services\CodeCraftMtnOrderStatusSyncService;
 use App\Services\DataMastaOrderStatusSyncService;
 use App\Services\RexamartOrderStatusSyncService;
-use App\Services\BundlePortalMtnOrderStatusSyncService;
-use App\Services\BundlePortalOrderStatusSyncService;
+use App\Services\DataworksOrderStatusSyncService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -48,18 +47,11 @@ class OrderStatusSyncService
         $rexamartSync = new RexamartOrderStatusSyncService();
         $rexamartSync->syncOrderStatuses();
         
-        // Sync BundlePortal MTN orders
+        // Sync Dataworks MTN Express orders
         try {
-            (new BundlePortalMtnOrderStatusSyncService())->syncOrderStatuses();
+            (new DataworksOrderStatusSyncService())->syncOrderStatuses();
         } catch (\Exception $e) {
-            Log::error('BundlePortal MTN sync failed', ['error' => $e->getMessage()]);
-        }
-        
-        // Sync BundlePortal Telecel/AT orders
-        try {
-            (new BundlePortalOrderStatusSyncService())->syncOrderStatuses();
-        } catch (\Exception $e) {
-            Log::error('BundlePortal sync failed', ['error' => $e->getMessage()]);
+            Log::error('Dataworks sync failed', ['error' => $e->getMessage()]);
         }
         
         foreach ($processingOrders as $order) {
@@ -81,6 +73,10 @@ class OrderStatusSyncService
                 
                 $isRexamart = strtolower($order->network) === 'telecel' && $order->reference_id;
                 if ($isRexamart) {
+                    continue;
+                }
+                // Bundle Portal v2 order status is delivered by its webhook.
+                if (str_starts_with((string) $order->reference_id, 'SD-')) {
                     continue;
                 }
                 

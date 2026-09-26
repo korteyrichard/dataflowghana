@@ -113,6 +113,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])->name('admin.')->group(fun
     Route::post('admin/toggle-codecraft-telecel-order-pusher', [\App\Http\Controllers\AdminDashboardController::class, 'toggleCodecraftTelecelOrderPusher'])->name('toggle.codecraft.telecel.order.pusher');
     Route::post('admin/bundleportal-mtn-api/toggle', [\App\Http\Controllers\AdminDashboardController::class, 'toggleBundlePortalMtnApi'])->name('bundleportal-mtn-api.toggle');
     Route::post('admin/bundleportal-api/toggle', [\App\Http\Controllers\AdminDashboardController::class, 'toggleBundlePortalApi'])->name('bundleportal-api.toggle');
+    Route::post('admin/dataworks-order-pusher/toggle', [\App\Http\Controllers\AdminDashboardController::class, 'toggleDataworksOrderPusher'])->name('dataworks-order-pusher.toggle');
     Route::post('admin/orders/retry-failed', [\App\Http\Controllers\AdminDashboardController::class, 'retryFailedOrders'])->name('orders.retryFailed');
     Route::post('admin/toggle-order-sync', [\App\Http\Controllers\AdminDashboardController::class, 'toggleOrderSync'])->name('toggle.order.sync');
 });

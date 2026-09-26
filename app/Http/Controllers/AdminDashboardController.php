@@ -20,6 +20,7 @@ use App\Services\DataSourceOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use App\Services\BundlePortalMtnOrderPusherService;
 use App\Services\BundlePortalOrderPusherService;
+use App\Services\DataworksOrderPusherService;
 
 class AdminDashboardController extends Controller
 {
@@ -76,6 +77,7 @@ class AdminDashboardController extends Controller
             'codeCraftTelecelOrderPusherEnabled' => (bool) Setting::get('codecraft_telecel_order_pusher_enabled', 0),
             'bundlePortalMtnApiEnabled' => (bool) Setting::get('bundleportal_mtn_api_enabled', 0),
             'bundlePortalApiEnabled' => (bool) Setting::get('bundleportal_api_enabled', 0),
+            'dataworksOrderPusherEnabled' => (bool) Setting::get('dataworks_order_pusher_enabled', 0),
         ]);
     }
 
@@ -1025,6 +1027,14 @@ class AdminDashboardController extends Controller
         return redirect()->back()->with('success', "Bundle Portal order pusher {$status} successfully.");
     }
 
+    public function toggleDataworksOrderPusher(Request $request)
+    {
+        $enabled = $request->input('enabled', false);
+        Setting::set('dataworks_order_pusher_enabled', $enabled ? '1' : '0');
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Dataworks order pusher {$status} successfully.");
+    }
+
     /**
      * Toggle order sync cron jobs.
      */
@@ -1061,8 +1071,9 @@ class AdminDashboardController extends Controller
         $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
         $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
         $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
+        $dataworksEnabled = (bool) Setting::get('dataworks_order_pusher_enabled', 0);
 
-        if (!$bundlePortalMtnEnabled && !$dataMastaEnabled && !$codecraftMtnEnabled && !$dataSourceEnabled && !$dataeasyEnabled) {
+        if (!$bundlePortalMtnEnabled && !$dataMastaEnabled && !$codecraftMtnEnabled && !$dataSourceEnabled && !$dataeasyEnabled && !$dataworksEnabled) {
             return redirect()->back()->with('error', 'No MTN pusher is currently enabled.');
         }
 
@@ -1071,7 +1082,10 @@ class AdminDashboardController extends Controller
         foreach ($orders as $order) {
             try {
                 $isMtnExpress = $order->products->contains(fn($p) => stripos($p->name, 'mtn express') !== false);
-                if ($isMtnExpress && $bundlePortalMtnEnabled) {
+                $isMtn = stripos($order->network, 'mtn') !== false;
+                if ($isMtn && !$isMtnExpress && $dataworksEnabled) {
+                    (new DataworksOrderPusherService())->pushOrderToApi($order);
+                } elseif ($isMtnExpress && $bundlePortalMtnEnabled) {
                     (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
                 } elseif ($isMtnExpress && $codecraftMtnEnabled) {
                     (new CodeCraftMtnOrderPusherService())->pushOrderToApi($order);

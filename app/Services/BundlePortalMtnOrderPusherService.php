@@ -4,9 +4,6 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\ProductVariant;
-use App\Models\Transaction;
-use App\Models\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,7 +14,7 @@ class BundlePortalMtnOrderPusherService
 
     public function __construct()
     {
-        $this->baseUrl = config('services.bundleportal.base_url', 'https://api.bundleportal.com/v1');
+        $this->baseUrl = config('services.bundleportal.base_url', 'https://api.bundleportal.com/v2');
         $this->apiKey  = config('services.bundleportal.api_key', '');
     }
 
@@ -30,9 +27,9 @@ class BundlePortalMtnOrderPusherService
                 continue;
             }
 
-            $phone   = $item->pivot->beneficiary_number;
+            $phone = $item->pivot->beneficiary_number;
             $variant = ProductVariant::find($item->pivot->product_variant_id);
-            $gb      = $variant && isset($variant->variant_attributes['size'])
+            $gb = $variant && isset($variant->variant_attributes['size'])
                 ? (int) filter_var($variant->variant_attributes['size'], FILTER_SANITIZE_NUMBER_INT)
                 : 0;
 
@@ -41,16 +38,53 @@ class BundlePortalMtnOrderPusherService
                 continue;
             }
 
-            $externalOrderId = 'SD-' . $order->id . '-' . time();
+            $recipient = $this->formatPhone($phone);
+            $externalOrderId = 'SD-' . $order->id;
+            $isRetry = $order->reference_id === $externalOrderId;
             $payload = [
-                'action'       => 'place_order',
-                'network'      => 'mtn',
-                'recipient'    => $this->formatPhone($phone),
+                'action' => 'place_order',
+                'network' => 'mtn',
+                'recipient' => $recipient,
                 'package_size' => $gb,
-                'order_id'     => $externalOrderId,
+                'order_id' => $externalOrderId,
             ];
+            $order->update(['reference_id' => $externalOrderId]);
 
             try {
+                if (!$isRetry) {
+                    $verification = Http::timeout(30)
+                        ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
+                        ->post($this->baseUrl, [
+                            'action' => 'verify_number',
+                            'network' => 'mtn',
+                            'recipient' => $recipient,
+                        ]);
+                    $verificationData = $verification->json() ?? [];
+
+                    if (($verificationData['success'] ?? false)
+                        && array_key_exists('can_order', $verificationData['data'] ?? [])
+                        && !$verificationData['data']['can_order']) {
+                        BundlePortalOrderFailureService::refund(
+                            $order,
+                            $verificationData['data']['allowlist_message'] ?? 'Recipient is not approved or has a previous MTN order still in flight.'
+                        );
+                        return;
+                    }
+
+                    if (!($verificationData['success'] ?? false) || !($verificationData['data']['can_order'] ?? false)) {
+                        BundlePortalOrderFailureService::refund(
+                            $order,
+                            $verificationData['message'] ?? $verificationData['error'] ?? 'Bundle Portal MTN number verification failed.'
+                        );
+                        Log::warning('BundlePortal MTN number verification failed', [
+                            'order_id' => $order->id,
+                            'status' => $verification->status(),
+                            'response' => $verificationData,
+                        ]);
+                        return;
+                    }
+                }
+
                 $response = Http::timeout(30)
                     ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
                     ->post($this->baseUrl, $payload);
@@ -59,91 +93,33 @@ class BundlePortalMtnOrderPusherService
 
                 Log::info('BundlePortal MTN response', ['order_id' => $order->id, 'status' => $response->status(), 'body' => $data]);
 
-                if ($response->status() === 409 && ($data['error'] ?? '') === 'pending_order') {
-                    $order->update(['api_status' => 'failed']);
+                if ($response->status() === 409 && (($data['code'] ?? $data['error'] ?? '') === 'pending_order')) {
+                    BundlePortalOrderFailureService::refund($order, $data['message'] ?? 'A previous order is still being delivered.');
                     Log::warning('BundlePortal MTN: pending_order conflict', ['order_id' => $order->id]);
                     return;
                 }
 
                 if (($data['success'] ?? false) && isset($data['data']['reference'])) {
                     $order->update([
-                        'reference_id' => $data['data']['reference'],
+                        'reference_id' => $externalOrderId,
                         'api_status'   => 'success',
                     ]);
-                    Log::info('BundlePortal MTN order placed', ['reference' => $data['data']['reference']]);
+                    Log::info('BundlePortal MTN order placed', ['order_id' => $externalOrderId, 'reference' => $data['data']['reference']]);
                 } else {
-                    $message = $data['message'] ?? '';
-                    $error   = $data['error'] ?? '';
-                    $code    = $data['code'] ?? '';
-                    if ($this->isUnverifiedNumberError($message) || $this->isUnverifiedNumberError($error) || $code === 'not_allowlisted') {
-                        $this->cancelAndRefund($order, $message ?: $error);
+                    $retryable = in_array($response->status(), [429, 500], true)
+                        || ($response->status() === 503 && ($data['code'] ?? '') === 'order_capacity_busy');
+                    if ($retryable) {
+                        $order->update(['reference_id' => $externalOrderId]);
                     } else {
-                        $order->update(['api_status' => 'failed']);
+                        BundlePortalOrderFailureService::refund($order, $data['message'] ?? $data['error'] ?? 'Bundle Portal rejected the order.');
                     }
-                    Log::error('BundlePortal MTN: order failed', ['order_id' => $order->id, 'message' => $message, 'response' => $data]);
+                    Log::error('BundlePortal MTN: order failed', ['order_id' => $order->id, 'response' => $data]);
                 }
             } catch (\Exception $e) {
-                $order->update(['api_status' => 'failed']);
+                $order->update(['reference_id' => $externalOrderId]);
                 Log::error('BundlePortal MTN exception', ['order_id' => $order->id, 'error' => $e->getMessage()]);
             }
         }
-    }
-
-    public function checkOrderStatus(string $reference): ?array
-    {
-        try {
-            $response = Http::timeout(30)
-                ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
-                ->post($this->baseUrl, ['action' => 'check_status', 'reference' => $reference]);
-
-            return $response->json();
-        } catch (\Exception $e) {
-            Log::error('BundlePortal MTN status check failed', ['reference' => $reference, 'error' => $e->getMessage()]);
-            return null;
-        }
-    }
-
-    private function isUnverifiedNumberError(string $message): bool
-    {
-        $keywords = ['not verified', 'unverified', 'invalid number', 'not registered', 'unregistered', 'number not found', 'not approved', 'not_allowlisted'];
-        foreach ($keywords as $keyword) {
-            if (stripos($message, $keyword) !== false) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private function cancelAndRefund(Order $order, string $reason): void
-    {
-        DB::transaction(function () use ($order, $reason) {
-            $user = User::lockForUpdate()->find($order->user_id);
-            $balanceBefore = $user->wallet_balance;
-            $user->increment('wallet_balance', $order->total);
-            $balanceAfter = $user->fresh()->wallet_balance;
-
-            $order->update([
-                'status'     => 'cancelled',
-                'api_status' => 'failed',
-            ]);
-
-            Transaction::create([
-                'user_id'        => $order->user_id,
-                'order_id'       => $order->id,
-                'amount'         => $order->total,
-                'balance_before' => $balanceBefore,
-                'balance_after'  => $balanceAfter,
-                'status'         => 'completed',
-                'type'           => 'refund',
-                'description'    => "Auto-refund for order #{$order->id}: {$reason}",
-            ]);
-        });
-
-        Log::info('BundlePortal MTN: order auto-cancelled and refunded due to unverified number', [
-            'order_id' => $order->id,
-            'amount'   => $order->total,
-            'reason'   => $reason,
-        ]);
     }
 
     private function isMtn(string $name): bool

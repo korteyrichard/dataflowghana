@@ -15,6 +15,7 @@ use App\Services\RexamartOrderPusherService;
 use App\Services\CodeCraftTelecelOrderPusherService;
 use App\Services\BundlePortalMtnOrderPusherService;
 use App\Services\BundlePortalOrderPusherService;
+use App\Services\DataworksOrderPusherService;
 use App\Services\DataEasyOrderPusherService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -135,6 +136,7 @@ class BulkOrderController extends Controller
 
             $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
             $bundlePortalEnabled = (bool) Setting::get('bundleportal_api_enabled', 0);
+            $dataworksEnabled = (bool) Setting::get('dataworks_order_pusher_enabled', 0);
             $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
             $dataMastaEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
@@ -149,7 +151,10 @@ class BulkOrderController extends Controller
                     $isMtn = !$isMtnExpress && stripos($order->network, 'mtn') !== false;
                     $isTelecelOrAt = in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime', 'airteltigo']);
 
-                    if ($isMtnExpress && $bundlePortalMtnEnabled) {
+                    if ($isMtn && $dataworksEnabled) {
+                        (new DataworksOrderPusherService())->pushOrderToApi($order);
+                        Log::info('Bulk order pushed to Dataworks', ['order_id' => $order->id]);
+                    } elseif ($isMtnExpress && $bundlePortalMtnEnabled) {
                         (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
                         Log::info('Bulk order pushed to BundlePortal MTN', ['order_id' => $order->id]);
                     } elseif ($isMtnExpress && $codecraftMtnEnabled) {

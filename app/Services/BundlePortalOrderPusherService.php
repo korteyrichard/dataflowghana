@@ -14,7 +14,7 @@ class BundlePortalOrderPusherService
 
     public function __construct()
     {
-        $this->baseUrl = config('services.bundleportal.base_url', 'https://api.bundleportal.com/v1');
+        $this->baseUrl = config('services.bundleportal.base_url', 'https://api.bundleportal.com/v2');
         $this->apiKey  = config('services.bundleportal.api_key', '');
     }
 
@@ -40,16 +40,51 @@ class BundlePortalOrderPusherService
                 continue;
             }
 
-            $externalOrderId = 'SD-' . $order->id . '-' . time();
+            $recipient = $this->formatPhone($phone);
+            $externalOrderId = 'SD-' . $order->id;
             $payload = [
                 'action'       => 'place_order',
                 'network'      => $network,
-                'recipient'    => $this->formatPhone($phone),
+                'recipient'    => $recipient,
                 'package_size' => $gb,
                 'order_id'     => $externalOrderId,
             ];
+            $isRetry = $order->reference_id === $externalOrderId;
+            $order->update(['reference_id' => $externalOrderId]);
 
             try {
+                if (!$isRetry) {
+                    $verification = Http::timeout(30)
+                        ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
+                        ->post($this->baseUrl, [
+                            'action' => 'verify_number',
+                            'network' => $network,
+                            'recipient' => $recipient,
+                        ]);
+                    $verificationData = $verification->json() ?? [];
+
+                    if (($verificationData['success'] ?? false) && array_key_exists('can_order', $verificationData['data'] ?? []) && !$verificationData['data']['can_order']) {
+                        BundlePortalOrderFailureService::refund(
+                            $order,
+                            $verificationData['data']['allowlist_message'] ?? 'Recipient is not approved or has a previous order still in flight.'
+                        );
+                        return;
+                    }
+
+                    if (!($verificationData['success'] ?? false) || !($verificationData['data']['can_order'] ?? false)) {
+                        BundlePortalOrderFailureService::refund(
+                            $order,
+                            $verificationData['message'] ?? $verificationData['error'] ?? 'Bundle Portal number verification failed.'
+                        );
+                        Log::warning('BundlePortal number verification failed', [
+                            'order_id' => $order->id,
+                            'status' => $verification->status(),
+                            'response' => $verificationData,
+                        ]);
+                        return;
+                    }
+                }
+
                 $response = Http::timeout(30)
                     ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
                     ->post($this->baseUrl, $payload);
@@ -58,40 +93,32 @@ class BundlePortalOrderPusherService
 
                 Log::info('BundlePortal response', ['order_id' => $order->id, 'status' => $response->status(), 'body' => $data]);
 
-                if ($response->status() === 409 && ($data['error'] ?? '') === 'pending_order') {
-                    $order->update(['api_status' => 'failed']);
+                if ($response->status() === 409 && (($data['code'] ?? $data['error'] ?? '') === 'pending_order')) {
+                    BundlePortalOrderFailureService::refund($order, $data['message'] ?? 'A previous order is still being delivered.');
                     Log::warning('BundlePortal: pending_order conflict', ['order_id' => $order->id]);
                     return;
                 }
 
                 if (($data['success'] ?? false) && isset($data['data']['reference'])) {
                     $order->update([
-                        'reference_id' => $data['data']['reference'],
+                        'reference_id' => $externalOrderId,
                         'api_status'   => 'success',
                     ]);
-                    Log::info('BundlePortal order placed', ['reference' => $data['data']['reference']]);
+                    Log::info('BundlePortal order placed', ['order_id' => $externalOrderId, 'reference' => $data['data']['reference']]);
                 } else {
-                    $order->update(['api_status' => 'failed']);
+                    $retryable = in_array($response->status(), [429, 500], true)
+                        || ($response->status() === 503 && ($data['code'] ?? '') === 'order_capacity_busy');
+                    if ($retryable) {
+                        $order->update(['reference_id' => $externalOrderId]);
+                    } else {
+                        BundlePortalOrderFailureService::refund($order, $data['message'] ?? $data['error'] ?? 'Bundle Portal rejected the order.');
+                    }
                     Log::error('BundlePortal: order failed', ['order_id' => $order->id, 'response' => $data]);
                 }
             } catch (\Exception $e) {
-                $order->update(['api_status' => 'failed']);
+                $order->update(['reference_id' => $externalOrderId]);
                 Log::error('BundlePortal exception', ['order_id' => $order->id, 'error' => $e->getMessage()]);
             }
-        }
-    }
-
-    public function checkOrderStatus(string $reference): ?array
-    {
-        try {
-            $response = Http::timeout(30)
-                ->withHeaders(['x-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
-                ->post($this->baseUrl, ['action' => 'check_status', 'reference' => $reference]);
-
-            return $response->json();
-        } catch (\Exception $e) {
-            Log::error('BundlePortal status check failed', ['reference' => $reference, 'error' => $e->getMessage()]);
-            return null;
         }
     }
 
