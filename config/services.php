@@ -84,4 +84,9 @@ return [
         'api_key' => env('DATAWORKS_API_KEY', ''),
     ],
 
+    'maxdata' => [
+        'base_url' => env('MAXDATA_BASE_URL', 'https://maxdata-hub.com/api/v1'),
+        'api_key' => env('MAXDATA_API_KEY', ''),
+    ],
+
 ];

@@ -137,6 +137,7 @@ class BulkOrderController extends Controller
             $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
             $bundlePortalEnabled = (bool) Setting::get('bundleportal_api_enabled', 0);
             $dataworksEnabled = (bool) Setting::get('dataworks_order_pusher_enabled', 0);
+            $maxDataEnabled = (bool) Setting::get('maxdata_order_pusher_enabled', 0);
             $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
             $dataMastaEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
             $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
@@ -151,29 +152,19 @@ class BulkOrderController extends Controller
                     $isMtn = !$isMtnExpress && stripos($order->network, 'mtn') !== false;
                     $isTelecelOrAt = in_array(strtolower($order->network), ['telecel', 'ishare', 'bigtime', 'airteltigo']);
 
-                    if ($isMtn && $dataworksEnabled) {
+                    if ($isMtnExpress && $maxDataEnabled) {
+                        if ((new \App\Services\MaxDataOrderPusherService())->pushOrderToApi($order)) {
+                            Log::info('Bulk MTN Express order pushed to Max Data', ['order_id' => $order->id]);
+                        }
+                    } elseif ($isMtnExpress && $dataworksEnabled) {
                         (new DataworksOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to Dataworks', ['order_id' => $order->id]);
-                    } elseif ($isMtnExpress && $bundlePortalMtnEnabled) {
+                        Log::info('Bulk MTN Express order pushed to Dataworks', ['order_id' => $order->id]);
+                    } elseif ($isMtn && $bundlePortalMtnEnabled) {
                         (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to BundlePortal MTN', ['order_id' => $order->id]);
-                    } elseif ($isMtnExpress && $codecraftMtnEnabled) {
-                        (new CodeCraftMtnOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to CodeCraft MTN', ['order_id' => $order->id]);
-                    } elseif ($isMtnExpress) {
+                        Log::info('Bulk MTN order pushed to BundlePortal', ['order_id' => $order->id]);
+                    } elseif ($isMtnExpress || $isMtn) {
                         $order->update(['api_status' => 'disabled']);
-                    } elseif ($isMtn && !$isMtnExpress && $dataMastaEnabled) {
-                        (new DataMastaOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to DataMasta', ['order_id' => $order->id]);
-                    } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
-                        (new DataSourceOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to DataSource', ['order_id' => $order->id]);
-                    } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
-                        (new DataEasyOrderPusherService())->pushOrderToApi($order);
-                        Log::info('Bulk order pushed to DataEasy', ['order_id' => $order->id]);
-                    } elseif ($isMtn) {
-                        $order->update(['api_status' => 'disabled']);
-                        Log::warning('No MTN pusher enabled for bulk order', ['order_id' => $order->id]);
+                        Log::warning('MTN pusher disabled for bulk order', ['order_id' => $order->id, 'is_mtn_express' => $isMtnExpress]);
                     } elseif ($isTelecelOrAt && $bundlePortalEnabled) {
                         (new BundlePortalOrderPusherService())->pushOrderToApi($order);
                         Log::info('Bulk order pushed to BundlePortal (Telecel/AT)', ['order_id' => $order->id]);

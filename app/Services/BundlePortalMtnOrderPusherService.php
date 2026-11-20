@@ -23,7 +23,7 @@ class BundlePortalMtnOrderPusherService
         $items = $order->products()->withPivot('quantity', 'price', 'beneficiary_number', 'product_variant_id')->get();
 
         foreach ($items as $item) {
-            if (!$this->isMtn($item->name)) {
+            if (!$this->isMtn($item->name) || stripos($item->name, 'mtn express') !== false) {
                 continue;
             }
 
@@ -106,12 +106,14 @@ class BundlePortalMtnOrderPusherService
                     ]);
                     Log::info('BundlePortal MTN order placed', ['order_id' => $externalOrderId, 'reference' => $data['data']['reference']]);
                 } else {
-                    $retryable = in_array($response->status(), [429, 500], true)
-                        || ($response->status() === 503 && ($data['code'] ?? '') === 'order_capacity_busy');
+                    $failureMessage = (string) ($data['message'] ?? $data['error'] ?? 'Bundle Portal rejected the order.');
+                    $definitiveNoOrder = stripos($failureMessage, 'no order was placed') !== false;
+                    $retryable = !$definitiveNoOrder && (in_array($response->status(), [429, 500], true)
+                        || ($response->status() === 503 && ($data['code'] ?? '') === 'order_capacity_busy'));
                     if ($retryable) {
                         $order->update(['reference_id' => $externalOrderId]);
                     } else {
-                        BundlePortalOrderFailureService::refund($order, $data['message'] ?? $data['error'] ?? 'Bundle Portal rejected the order.');
+                        BundlePortalOrderFailureService::refund($order, $failureMessage);
                     }
                     Log::error('BundlePortal MTN: order failed', ['order_id' => $order->id, 'response' => $data]);
                 }

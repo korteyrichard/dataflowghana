@@ -78,6 +78,7 @@ class AdminDashboardController extends Controller
             'bundlePortalMtnApiEnabled' => (bool) Setting::get('bundleportal_mtn_api_enabled', 0),
             'bundlePortalApiEnabled' => (bool) Setting::get('bundleportal_api_enabled', 0),
             'dataworksOrderPusherEnabled' => (bool) Setting::get('dataworks_order_pusher_enabled', 0),
+            'maxDataOrderPusherEnabled' => (bool) Setting::get('maxdata_order_pusher_enabled', 0),
         ]);
     }
 
@@ -1035,6 +1036,14 @@ class AdminDashboardController extends Controller
         return redirect()->back()->with('success', "Dataworks order pusher {$status} successfully.");
     }
 
+    public function toggleMaxDataOrderPusher(Request $request)
+    {
+        $enabled = $request->boolean('enabled');
+        Setting::set('maxdata_order_pusher_enabled', $enabled ? '1' : '0');
+        $status = $enabled ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Max Data MTN Express order pusher {$status} successfully.");
+    }
+
     /**
      * Toggle order sync cron jobs.
      */
@@ -1067,13 +1076,10 @@ class AdminDashboardController extends Controller
         }
 
         $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
-        $dataMastaEnabled = (bool) Setting::get('datamasta_order_pusher_enabled', 0);
-        $codecraftMtnEnabled = (bool) Setting::get('codecraft_mtn_order_pusher_enabled', 0);
-        $dataSourceEnabled = (bool) Setting::get('datasource_order_pusher_enabled', 1);
-        $dataeasyEnabled = (bool) Setting::get('dataeasy_order_pusher_enabled', 0);
         $dataworksEnabled = (bool) Setting::get('dataworks_order_pusher_enabled', 0);
+        $maxDataEnabled = (bool) Setting::get('maxdata_order_pusher_enabled', 0);
 
-        if (!$bundlePortalMtnEnabled && !$dataMastaEnabled && !$codecraftMtnEnabled && !$dataSourceEnabled && !$dataeasyEnabled && !$dataworksEnabled) {
+        if (!$bundlePortalMtnEnabled && !$dataworksEnabled && !$maxDataEnabled) {
             return redirect()->back()->with('error', 'No MTN pusher is currently enabled.');
         }
 
@@ -1083,18 +1089,12 @@ class AdminDashboardController extends Controller
             try {
                 $isMtnExpress = $order->products->contains(fn($p) => stripos($p->name, 'mtn express') !== false);
                 $isMtn = stripos($order->network, 'mtn') !== false;
-                if ($isMtn && !$isMtnExpress && $dataworksEnabled) {
+                if ($isMtnExpress && $maxDataEnabled) {
+                    (new \App\Services\MaxDataOrderPusherService())->pushOrderToApi($order);
+                } elseif ($isMtnExpress && $dataworksEnabled) {
                     (new DataworksOrderPusherService())->pushOrderToApi($order);
-                } elseif ($isMtnExpress && $bundlePortalMtnEnabled) {
+                } elseif ($isMtn && !$isMtnExpress && $bundlePortalMtnEnabled) {
                     (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
-                } elseif ($isMtnExpress && $codecraftMtnEnabled) {
-                    (new CodeCraftMtnOrderPusherService())->pushOrderToApi($order);
-                } elseif (!$isMtnExpress && $dataMastaEnabled) {
-                    (new DataMastaOrderPusherService())->pushOrderToApi($order);
-                } elseif (!$isMtnExpress && $dataSourceEnabled) {
-                    (new DataSourceOrderPusherService())->pushOrderToApi($order);
-                } elseif (!$isMtnExpress && $dataeasyEnabled) {
-                    (new DataEasyOrderPusherService())->pushOrderToApi($order);
                 }
 
                 $order->refresh();

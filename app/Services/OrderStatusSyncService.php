@@ -53,6 +53,12 @@ class OrderStatusSyncService
         } catch (\Exception $e) {
             Log::error('Dataworks sync failed', ['error' => $e->getMessage()]);
         }
+
+        try {
+            (new MaxDataOrderStatusSyncService(new MaxDataOrderPusherService()))->syncOrderStatuses();
+        } catch (\Exception $e) {
+            Log::error('Max Data sync failed', ['error' => $e->getMessage()]);
+        }
         
         foreach ($processingOrders as $order) {
             try {

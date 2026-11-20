@@ -30,6 +30,7 @@ class DataworksOrderStatusSyncService
         $orders = Order::whereIn('status', ['pending', 'processing'])
             ->whereNotNull('reference_id')
             ->where('network', 'like', '%mtn%')
+            ->whereHas('products', fn ($query) => $query->where('name', 'like', '%mtn express%'))
             ->with('user')
             ->get();
 

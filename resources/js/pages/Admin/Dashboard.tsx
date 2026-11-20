@@ -51,6 +51,7 @@ interface AdminDashboardProps extends PageProps {
   bundlePortalMtnApiEnabled: boolean;
   bundlePortalApiEnabled: boolean;
   dataworksOrderPusherEnabled: boolean;
+  maxDataOrderPusherEnabled: boolean;
 }
 
 const StatCard = ({ title, value }: { title: string; value: number | string }) => (
@@ -93,6 +94,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   bundlePortalMtnApiEnabled,
   bundlePortalApiEnabled,
   dataworksOrderPusherEnabled,
+  maxDataOrderPusherEnabled,
 }) => {
   const { auth } = usePage<AdminDashboardProps>().props;
 
@@ -159,6 +161,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const toggleDataworksOrderPusher = () => {
     router.post('/admin/dataworks-order-pusher/toggle', {
       enabled: !dataworksOrderPusherEnabled
+    });
+  };
+
+  const toggleMaxDataOrderPusher = () => {
+    router.post(route('admin.maxdata-order-pusher.toggle'), {
+      enabled: !maxDataOrderPusherEnabled
     });
   };
 
@@ -426,9 +434,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Bundle Portal Order Pusher MTN (MTN)</h4>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Bundle Portal MTN Order Pusher (MTN)</h4>
                   <p className="text-sm text-gray-500 dark:text-gray-300">
-                    {bundlePortalMtnApiEnabled ? 'MTN orders are being pushed to Bundle Portal API' : 'Bundle Portal MTN order pushing is disabled'}
+                    {bundlePortalMtnApiEnabled ? 'Regular MTN orders are being pushed to Bundle Portal API' : 'Bundle Portal MTN order pushing is disabled'}
                   </p>
                 </div>
                 <button
@@ -474,9 +482,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Dataworks Order Pusher Service (MTN)</h4>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Dataworks Order Pusher (MTN Express)</h4>
                   <p className="text-sm text-gray-500 dark:text-gray-300">
-                    {dataworksOrderPusherEnabled ? 'MTN orders are being pushed to Dataworks API' : 'Dataworks order pushing is disabled'}
+                    {dataworksOrderPusherEnabled ? 'MTN Express orders are being pushed to Dataworks API' : 'Dataworks order pushing is disabled'}
                   </p>
                 </div>
                 <button
@@ -488,6 +496,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                       dataworksOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Max Data Order Pusher (MTN Express) */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-lg font-medium text-gray-900 dark:text-white">Max Data Order Pusher (MTN Express)</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">
+                    {maxDataOrderPusherEnabled ? 'MTN Express orders are being pushed to Max Data API' : 'Max Data order pushing is disabled'}
+                  </p>
+                </div>
+                <button
+                  onClick={toggleMaxDataOrderPusher}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    maxDataOrderPusherEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      maxDataOrderPusherEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>

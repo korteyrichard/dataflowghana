@@ -180,35 +180,21 @@ class OrderController extends Controller
             $bundlePortalMtnEnabled = (bool) Setting::get('bundleportal_mtn_api_enabled', 0);
             $bundlePortalEnabled = (bool) Setting::get('bundleportal_api_enabled', 0);
             $dataworksEnabled = (bool) Setting::get('dataworks_order_pusher_enabled', 0);
+            $maxDataEnabled = (bool) Setting::get('maxdata_order_pusher_enabled', 0);
             
-            if ($isMtn && !$isMtnExpress && $dataworksEnabled) {
+            if ($isMtnExpress && $maxDataEnabled) {
+                if ((new \App\Services\MaxDataOrderPusherService())->pushOrderToApi($order)) {
+                    Log::info('API MTN Express order pushed to Max Data', ['orderId' => $order->id]);
+                }
+            } elseif ($isMtnExpress && $dataworksEnabled) {
                 (new DataworksOrderPusherService())->pushOrderToApi($order);
-                Log::info('API Order pushed to Dataworks', ['orderId' => $order->id]);
-            } elseif ($isMtnExpress && $bundlePortalMtnEnabled) {
+                Log::info('API MTN Express order pushed to Dataworks', ['orderId' => $order->id]);
+            } elseif ($isMtn && !$isMtnExpress && $bundlePortalMtnEnabled) {
                 (new BundlePortalMtnOrderPusherService())->pushOrderToApi($order);
-                Log::info('API Order pushed to BundlePortal MTN', ['orderId' => $order->id]);
-            } elseif ($isMtnExpress && $codecraftMtnEnabled) {
-                $codecraftMtnPusher = new CodeCraftMtnOrderPusherService();
-                $codecraftMtnPusher->pushOrderToApi($order);
-                Log::info('API Order pushed to CodeCraft MTN API', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif ($isMtnExpress) {
+                Log::info('API MTN order pushed to BundlePortal', ['orderId' => $order->id]);
+            } elseif ($isMtnExpress || $isMtn) {
                 $order->update(['api_status' => 'disabled']);
-                Log::info('MTN Express order pusher disabled - skipping', ['orderId' => $order->id]);
-            } elseif ($isMtn && !$isMtnExpress && $datamasterEnabled) {
-                $dataMastaPusher = new DataMastaOrderPusherService();
-                $dataMastaPusher->pushOrderToApi($order);
-                Log::info('API Order pushed to DataMasta API', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif ($isMtn && !$isMtnExpress && $dataSourceEnabled) {
-                $dataSourceOrderPusher = new DataSourceOrderPusherService();
-                $dataSourceOrderPusher->pushOrderToApi($order);
-                Log::info('API Order pushed to DataSource Order Pusher API', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif ($isMtn && !$isMtnExpress && $dataeasyEnabled) {
-                $dataEasyOrderPusher = new DataEasyOrderPusherService();
-                $dataEasyOrderPusher->pushOrderToApi($order);
-                Log::info('API Order pushed to DataEasy API', ['orderId' => $order->id, 'network' => $order->network]);
-            } elseif ($isMtn && !$isMtnExpress) {
-                $order->update(['api_status' => 'disabled']);
-                Log::info('No MTN pusher enabled - skipping', ['orderId' => $order->id]);
+                Log::info('MTN order pusher disabled - skipping', ['orderId' => $order->id, 'is_mtn_express' => $isMtnExpress]);
             } elseif ($isTelecelOrAt && $bundlePortalEnabled) {
                 (new BundlePortalOrderPusherService())->pushOrderToApi($order);
                 Log::info('API Order pushed to BundlePortal (Telecel/AT)', ['orderId' => $order->id]);
