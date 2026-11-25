@@ -43,7 +43,8 @@ class OrderController extends Controller
         $request->validate([
             'beneficiary_number' => 'required|string',
             'network_id' => 'required|integer',
-            'size' => 'required|string'
+            'size' => 'required|string',
+            'is_express' => 'sometimes|boolean',
         ]);
 
         $existingOrder = Order::where('beneficiary_number', $request->beneficiary_number)
@@ -80,23 +81,35 @@ class OrderController extends Controller
         
         $networkName = $networkMap[$request->network_id];
         
-        // Handle MTN EXPRESS as a special case
-        if ($networkName === 'MTN' && $request->has('is_express') && $request->is_express) {
-            $networkName = 'MTN EXPRESS';
+        $isExpress = $request->boolean('is_express');
+        if ($isExpress && $networkName !== 'MTN') {
+            return response()->json(['error' => 'Express orders are only available for MTN'], 400);
         }
         
-        // Determine product type based on network_id range
-        if (in_array($request->network_id, [5, 6, 7, 8])) {
-            $productType = 'agent_product';
-        } elseif (in_array($request->network_id, [13, 14, 15, 16])) {
-            $productType = 'elite_product';
+        $productType = $request->attributes->get('express_product_type');
+        if (!$productType) {
+            // Determine product type based on network_id range
+            if (in_array($request->network_id, [5, 6, 7, 8])) {
+                $productType = 'agent_product';
+            } elseif (in_array($request->network_id, [13, 14, 15, 16])) {
+                $productType = 'elite_product';
+            } else {
+                $productType = 'dealer_product';
+            }
+        }
+        
+        $productQuery = Product::where('product_type', $productType);
+        if ($isExpress) {
+            $product = $productQuery
+                ->where('network', 'MTN')
+                ->whereRaw('LOWER(name) LIKE ?', ['%express%'])
+                ->first();
         } else {
-            $productType = 'dealer_product';
+            $product = $productQuery
+                ->where('network', $networkName)
+                ->whereRaw('LOWER(name) NOT LIKE ?', ['%express%'])
+                ->first();
         }
-        
-        $product = Product::where('network', $networkName)
-            ->where('product_type', $productType)
-            ->first();
             
         if (!$product) {
             return response()->json(['error' => 'Product not found'], 404);
@@ -245,6 +258,45 @@ class OrderController extends Controller
                 })
             ]
         ], 201);
+    }
+
+    /**
+     * Create an MTN Express order through the API.
+     */
+    public function storeExpress(Request $request)
+    {
+        if (is_string($request->input('network'))) {
+            $request->merge(['network' => strtoupper(trim($request->input('network')))]);
+        }
+
+        $request->validate([
+            'beneficiary_number' => 'required|string',
+            'size' => 'required|string',
+            'network' => 'required_without:network_id|nullable|string|in:MTN EXPRESS',
+            'network_id' => 'required_without:network|nullable|integer|in:5,9,13',
+        ]);
+
+        if ($request->filled('network')) {
+            $productType = match ($request->user()->role) {
+                'customer' => 'customer_product',
+                'agent' => 'agent_product',
+                'superAgent' => 'super_agent_product',
+                'elite' => 'elite_product',
+                'dealer', 'admin' => 'dealer_product',
+                default => null,
+            };
+
+            if (!$productType) {
+                return response()->json(['error' => 'Unsupported account type for Express orders'], 422);
+            }
+
+            $request->attributes->set('express_product_type', $productType);
+            $request->merge(['network_id' => 5]);
+        }
+
+        $request->merge(['is_express' => true]);
+
+        return $this->store($request);
     }
 
     /**

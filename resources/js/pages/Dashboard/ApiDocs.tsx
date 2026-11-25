@@ -326,6 +326,33 @@ BIGTIME: 12`}
 }`}
                                 </pre>
                             </div>
+                            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-md">
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                    <strong>POST</strong> /api/v1/express-orders
+                                </p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                                    Create an MTN Express order. The API selects the MTN product with "Express" in its name.
+                                    The product tier is selected from your authenticated account type.
+                                </p>
+                                <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto mb-2">
+{`{
+  "beneficiary_number": "0241234567",
+  "network": "MTN Express",
+  "size": "2GB"
+}`}
+                                </pre>
+                                <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                                    For compatibility, you can also send the existing MTN network ID: Agent 5, Dealer 9, or Elite 13.
+                                    Authentication headers are the same as other API requests.
+                                </p>
+                                <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto mt-2">
+{`curl -X POST "https://dataflowghana.com/api/v1/express-orders" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -H "Accept: application/json" \\
+  -H "Content-Type: application/json" \\
+  -d '{"beneficiary_number":"0241234567","network":"MTN Express","size":"2GB"}'`}
+                                </pre>
+                            </div>
                         </div>
                     </div>
 

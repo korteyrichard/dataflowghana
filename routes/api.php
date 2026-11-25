@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
         // ORDERS
         Route::get('/normal-orders', [OrderController::class, 'index']);
         Route::post('/normal-orders', [OrderController::class, 'store']);
+        Route::post('/express-orders', [OrderController::class, 'storeExpress']);
         Route::post('/excel-orders', [OrderController::class, 'store']);
 
         Route::get('/afa', [AFAController::class, 'index']);
